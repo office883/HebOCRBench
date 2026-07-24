@@ -1,0 +1,127 @@
+schema_version: "1.0"
+profile_id: public-full-v1
+status: release-candidate
+description: >-
+  Canonical public scientific profile for HebOCRBench v1. Source inclusion is
+  determined by scientific and reproducibility gates, not by archive size or
+  delivery mode. A certified build must contain every required source/track
+  member below and must match the locked source identities.
+
+inclusion_policy:
+  exclude_for_size: false
+  exclude_for_noncommercial: false
+  exclude_for_sharealike: false
+  exclude_for_federated_delivery: false
+  exclude_for_access_control: false
+  partial_build_may_use_full_profile_name: false
+
+required_source_families:
+  - source_id: pinkas-v1
+    language: he
+    script: Hebr
+    task: historical-handwriting-page-ocr
+    delivery_mode: bundled-or-federated
+    required_for_tracks:
+      - recognition-oracle-v1
+      - page-ocr-blind-v1
+
+  - source_id: biblia-bnf-1.0
+    language: he
+    script: Hebr
+    task: medieval-manuscript-page-ocr
+    delivery_mode: federated-or-release-assets
+    required_for_tracks:
+      - recognition-oracle-v1
+      - page-ocr-blind-v1
+
+  - source_id: he-wikisource-validated-v1
+    language: he
+    script: Hebr
+    task: validated-historical-print-page-ocr
+    delivery_mode: federated
+    required_for_tracks:
+      - recognition-oracle-v1
+      - page-ocr-blind-v1
+      - bidi-conformance-v1
+
+  - source_id: jochre-yiddish-1.0
+    language: yi
+    script: Hebr
+    task: historical-yiddish-print-page-ocr
+    delivery_mode: acceptance-required-federated
+    score_namespace: yiddish
+    required_for_tracks:
+      - recognition-oracle-v1
+      - page-ocr-blind-v1
+
+  - source_id: hhd-v0.2
+    language: he
+    script: Hebr
+    task: isolated-handwritten-character-recognition
+    delivery_mode: bundled-or-federated
+    score_namespace: isolated-characters
+    required_for_tracks:
+      - isolated-character-v1
+
+required_extensions_when_adapter_is_certified:
+  - source_id: biblia-bav-extension-v1
+    language: he
+    script: Hebr
+    task: medieval-manuscript-page-ocr
+    delivery_mode: federated-iiif
+    activation_gate: complete-image-gt-pairing-and-lock
+
+  - source_id: netlay-v1
+    script: Hebr
+    task: layout-classification
+    delivery_mode: bundled-or-federated
+    activation_gate: official-adapter-and-track-lock
+
+  - source_id: vaybertaytsh-yidtaknl-v1
+    language: yi
+    script: Hebr
+    task: historical-yiddish-print
+    delivery_mode: bundled-or-federated
+    activation_gate: official-adapter-and-leakage-audit
+
+coverage_expansion_priorities:
+  - modern-hebrew-clean-print
+  - modern-hebrew-degraded-scans
+  - israeli-government-and-legal-documents
+  - newspapers-and-magazines
+  - forms-and-key-value-documents
+  - rtl-tables-and-financial-documents
+  - fax-and-camera-capture
+  - modern-israeli-handwriting
+  - vocalized-and-cantillated-hebrew
+  - rabbinic-multi-commentary-layouts
+  - judeo-arabic-and-ladino-in-hebrew-script
+
+certification_requirements:
+  source_locks: required
+  exact_membership_manifest: required
+  document_disjoint_split: required
+  duplicate_and_leakage_audit: required
+  image_and_ground_truth_hashes: required
+  attribution_and_license_bundle: required
+  frozen_dataset_fingerprint: required
+  participant_pack: required
+  organizer_pack: required
+  real_baseline_bundles: required
+  confidence_intervals: required
+  external_review: required
+
+convenience_subsets:
+  - profile_id: redistributable-v1
+    purpose: zero-friction byte bundle
+    scientifically_equivalent_to_public_full: false
+    may_appear_as_public_full_leaderboard_result: false
+
+notes:
+  - >-
+    Each language and task retains a separate score namespace. Inclusion in
+    public-full-v1 never authorizes averaging Yiddish into a Hebrew language
+    score or character classification into page-OCR CER.
+  - >-
+    Delivery terms remain attached to each source. They change transport and
+    redistribution behavior, not scientific membership.
