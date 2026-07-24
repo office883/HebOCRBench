@@ -34,7 +34,8 @@ jobs:
         run: |
           set -euo pipefail
           python - "$RUNNER_TEMP/materialize_v1_sources.py" "$RUNNER_TEMP/probe.json" <<'PY'
-          import importlib.util, json, sys
+          from collections import Counter
+          import importlib.util, json, re, sys
           from pathlib import Path
           script, output = Path(sys.argv[1]), Path(sys.argv[2])
           spec = importlib.util.spec_from_file_location('hebocrbench_probe', script)
@@ -42,11 +43,27 @@ jobs:
           spec.loader.exec_module(module)
           titles = module._category_members()
           grouped = [module._page_parts(title) for title in titles]
+          counts = Counter(document for document, _ in grouped)
           rights = module._file_metadata(document for document, _ in grouped)
-          approved = sorted(
-              name for name, info in rights.items()
-              if module._approved_file_rights(info.get('extmetadata') or {})
-          )
+          details = {}
+          for document in sorted(counts):
+              info = rights.get(document, {})
+              ext = info.get('extmetadata') or {}
+              values = {
+                  key: module._ext_value(ext, key)
+                  for key in (
+                      'LicenseShortName', 'LicenseUrl', 'Copyrighted', 'UsageTerms',
+                      'AttributionRequired', 'Artist', 'Credit', 'DateTimeOriginal',
+                  )
+              }
+              details[document] = {
+                  'validated_page_count': counts[document],
+                  'approved': module._approved_file_rights(ext),
+                  'sha1': info.get('sha1'),
+                  'mime': info.get('mime'),
+                  **values,
+              }
+          approved = sorted(name for name, item in details.items() if item['approved'])
           approved_set = set(approved)
           candidates = sorted(title for title in titles if module._page_parts(title)[0] in approved_set)
           payload = {
@@ -55,12 +72,18 @@ jobs:
               'approved_document_count': len(approved),
               'candidate_page_count': len(candidates),
               'approved_documents': approved,
-              'unapproved_documents': sorted(set(document for document, _ in grouped) - approved_set),
+              'unapproved_documents': sorted(set(counts) - approved_set),
+              'document_details': details,
               'first_candidates': candidates[:20],
               'last_candidates': candidates[-20:],
           }
           output.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + '\n', encoding='utf-8')
-          print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+          print(json.dumps({
+              'category_member_count': payload['category_member_count'],
+              'approved_document_count': payload['approved_document_count'],
+              'candidate_page_count': payload['candidate_page_count'],
+              'unapproved_documents': payload['unapproved_documents'],
+          }, ensure_ascii=False, sort_keys=True))
           PY
       - uses: actions/upload-artifact@v4
         with:
