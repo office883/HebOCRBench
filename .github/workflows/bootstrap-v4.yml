@@ -37,13 +37,28 @@ jobs:
             | base64 --decode > "$RUNNER_TEMP/HebOCRBench-base.tar.xz"
           wc -c "$RUNNER_TEMP/HebOCRBench-base.tar.xz"
 
-      - name: Verify and extract base archive
+      - name: Verify base archive SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/HebOCRBench-base.tar.xz"
+          sha256sum "$archive"
+          printf '%s  %s\n' "$BASE_ARCHIVE_SHA256" "$archive" | sha256sum --check --strict
+
+      - name: Validate base archive container
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/HebOCRBench-base.tar.xz"
+          xz --test "$archive"
+          tar -tJf "$archive" | sed -n '1,20p'
+
+      - name: Extract base archive
         shell: bash
         run: |
           set -euo pipefail
           archive="$RUNNER_TEMP/HebOCRBench-base.tar.xz"
           root="$RUNNER_TEMP/hebocr-source"
-          printf '%s  %s\n' "$BASE_ARCHIVE_SHA256" "$archive" | sha256sum --check --strict
           mkdir -p "$root"
           tar -xJf "$archive" -C "$root"
           test -s "$root/pyproject.toml"
