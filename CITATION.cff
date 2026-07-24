@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use HebOCRBench, cite this software release and every corpus source present in your materialized build."
+title: "HebOCRBench: Unicode-, BiDi-, Layout- and Diacritic-Aware OCR Benchmark for Hebrew-Script Documents"
+type: software
+version: 1.0.0
+date-released: 2026-07-23
+license: MIT
+authors:
+  - name: "HebOCRBench contributors"
+keywords:
+  - OCR
+  - Hebrew
+  - Yiddish
+  - Unicode
+  - bidirectional text
+  - document layout analysis
+  - handwritten text recognition
+abstract: >-
+  HebOCRBench is a reproducible benchmark suite for Hebrew-script OCR. It evaluates
+  Unicode logical order, mixed bidirectional text, diacritics, punctuation, layout,
+  reading order, tables and forms, and provides a license-aware federated pipeline
+  for materializing and certifying real PAGE XML and ALTO corpora.
