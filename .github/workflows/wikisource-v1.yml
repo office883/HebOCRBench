@@ -6,6 +6,11 @@ on:
     paths:
       - tools/wikisource-materializer.py.xz.b64
       - .github/workflows/wikisource-v1.yml
+  pull_request:
+    paths:
+      - tools/wikisource-materializer.py.xz.b64
+      - .github/workflows/wikisource-v1.yml
+      - .github/wikisource-v1-trigger
 
 permissions:
   contents: read
