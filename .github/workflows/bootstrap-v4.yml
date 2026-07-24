@@ -27,28 +27,45 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Reconstruct and verify the source tree
+      - name: Reconstruct base archive bytes
         shell: bash
         run: |
           set -euo pipefail
-          root="$RUNNER_TEMP/hebocr-source"
-          archive="$RUNNER_TEMP/HebOCRBench-base.tar.xz"
-          patch_gz="$RUNNER_TEMP/HebOCRBench-current.patch.gz"
-          patch="$RUNNER_TEMP/HebOCRBench-current.patch"
-
-          mkdir -p "$root"
           cat \
             .bootstrap/v3/import.b64.part00 \
             .bootstrap/v3/import.b64.part01 \
-            | base64 --decode > "$archive"
-          printf '%s  %s\n' "$BASE_ARCHIVE_SHA256" "$archive" | sha256sum --check --strict
-          tar -xJf "$archive" -C "$root"
+            | base64 --decode > "$RUNNER_TEMP/HebOCRBench-base.tar.xz"
+          wc -c "$RUNNER_TEMP/HebOCRBench-base.tar.xz"
 
+      - name: Verify and extract base archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/HebOCRBench-base.tar.xz"
+          root="$RUNNER_TEMP/hebocr-source"
+          printf '%s  %s\n' "$BASE_ARCHIVE_SHA256" "$archive" | sha256sum --check --strict
+          mkdir -p "$root"
+          tar -xJf "$archive" -C "$root"
+          test -s "$root/pyproject.toml"
+
+      - name: Decode and verify source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch_gz="$RUNNER_TEMP/HebOCRBench-current.patch.gz"
+          patch="$RUNNER_TEMP/HebOCRBench-current.patch"
           base64 --decode .bootstrap/v4/current.patch.gz.b64 > "$patch_gz"
           printf '%s  %s\n' "$PATCH_GZIP_SHA256" "$patch_gz" | sha256sum --check --strict
           gzip --decompress --stdout "$patch_gz" > "$patch"
           printf '%s  %s\n' "$PATCH_SHA256" "$patch" | sha256sum --check --strict
+          wc -c "$patch"
 
+      - name: Apply source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/hebocr-source"
+          patch="$RUNNER_TEMP/HebOCRBench-current.patch"
           git -C "$root" init --quiet
           git -C "$root" config user.name 'HebOCRBench bootstrap verifier'
           git -C "$root" config user.email 'actions@users.noreply.github.com'
