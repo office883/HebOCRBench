@@ -1,0 +1,216 @@
+name: HebOCRBench Wikisource v1 snapshot
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - tools/wikisource-materializer.py.xz.b64
+      - .github/workflows/wikisource-v1.yml
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: '1'
+  MATERIALIZER_SHA256: 2a04bf2f7a1b100b318355f59c82df0187151cd43a0d6cb501b47300ae23a181
+  SHARD_COUNT: '4'
+
+jobs:
+  prepare:
+    name: Freeze Wikisource worklist
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Restore and verify materializer
+        shell: bash
+        run: |
+          set -euo pipefail
+          script="$RUNNER_TEMP/materialize_v1_sources.py"
+          base64 --decode tools/wikisource-materializer.py.xz.b64 | xz --decompress > "$script"
+          printf '%s  %s\n' "$MATERIALIZER_SHA256" "$script" | sha256sum --check --strict
+          python "$script" wikisource-prepare --help >/dev/null
+      - name: Freeze category, rights and revisions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/worklist"
+          python "$RUNNER_TEMP/materialize_v1_sources.py" \
+            wikisource-prepare \
+            --worklist "$RUNNER_TEMP/worklist/worklist.json"
+          python - "$RUNNER_TEMP/worklist/worklist.json" <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+          path = Path(sys.argv[1])
+          data = json.loads(path.read_text(encoding='utf-8'))
+          assert data['source_id'] == 'he-wikisource-validated-v1'
+          assert len(data['candidate_titles']) == 249
+          assert len(data['approved_documents']) == 17
+          assert data['materializer_sha256'] == '2a04bf2f7a1b100b318355f59c82df0187151cd43a0d6cb501b47300ae23a181'
+          print(json.dumps({
+              'worklist_sha256': data['worklist_sha256'],
+              'page_count': len(data['candidate_titles']),
+              'document_count': len(data['approved_documents']),
+              'file_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+          }, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wikisource-v1-worklist
+          path: ${{ runner.temp }}/worklist/worklist.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  shard:
+    name: Materialize Wikisource shard ${{ matrix.shard }}
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          name: wikisource-v1-worklist
+          path: ${{ runner.temp }}/worklist
+      - name: Restore and verify materializer
+        shell: bash
+        run: |
+          set -euo pipefail
+          script="$RUNNER_TEMP/materialize_v1_sources.py"
+          base64 --decode tools/wikisource-materializer.py.xz.b64 | xz --decompress > "$script"
+          printf '%s  %s\n' "$MATERIALIZER_SHA256" "$script" | sha256sum --check --strict
+      - name: Install image validator
+        run: python -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+      - name: Materialize assigned pages
+        shell: bash
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/shards"
+          python "$RUNNER_TEMP/materialize_v1_sources.py" \
+            wikisource-shard \
+            --worklist "$RUNNER_TEMP/worklist/worklist.json" \
+            --output "$RUNNER_TEMP/shards" \
+            --shard-index "$SHARD_INDEX" \
+            --shard-count "$SHARD_COUNT"
+          root="$RUNNER_TEMP/shards/shard-$SHARD_INDEX"
+          test -s "$root/.hebocrbench-shard.json"
+          test -s "$root/SHARD_EVIDENCE.json"
+          test -s "$root/SHARD_INVENTORY.json"
+          python - "$root" "$MATERIALIZER_SHA256" <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+          root, expected = Path(sys.argv[1]), sys.argv[2]
+          marker = json.loads((root / '.hebocrbench-shard.json').read_text())
+          inventory = json.loads((root / 'SHARD_INVENTORY.json').read_text())
+          evidence = json.loads((root / 'SHARD_EVIDENCE.json').read_text())
+          assert marker['materializer_sha256'] == expected
+          assert marker['tree_sha256'] == inventory['tree_sha256']
+          assert marker['assigned_count'] == len(evidence['assigned_titles'])
+          assert marker['included_count'] + marker['excluded_count'] == marker['assigned_count']
+          for item in inventory['files']:
+              path = root / item['path']
+              assert path.is_file(), item['path']
+              assert hashlib.sha256(path.read_bytes()).hexdigest() == item['sha256'], item['path']
+          print(json.dumps(marker, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wikisource-v1-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shards
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 3
+          compression-level: 0
+
+  assemble:
+    name: Assemble and certify source snapshot
+    needs: shard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          name: wikisource-v1-worklist
+          path: ${{ runner.temp }}/worklist
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wikisource-v1-shard-*
+          path: ${{ runner.temp }}/shards
+          merge-multiple: true
+      - name: Restore and verify materializer
+        shell: bash
+        run: |
+          set -euo pipefail
+          script="$RUNNER_TEMP/materialize_v1_sources.py"
+          base64 --decode tools/wikisource-materializer.py.xz.b64 | xz --decompress > "$script"
+          printf '%s  %s\n' "$MATERIALIZER_SHA256" "$script" | sha256sum --check --strict
+      - name: Assemble verified source
+        shell: bash
+        run: |
+          set -euo pipefail
+          find "$RUNNER_TEMP/shards" -maxdepth 2 -type f -name '.hebocrbench-shard.json' -print
+          python "$RUNNER_TEMP/materialize_v1_sources.py" \
+            wikisource-assemble \
+            --worklist "$RUNNER_TEMP/worklist/worklist.json" \
+            --shards-root "$RUNNER_TEMP/shards" \
+            --output "$RUNNER_TEMP/materialized" \
+            --shard-count "$SHARD_COUNT"
+          root="$RUNNER_TEMP/materialized/he-wikisource-validated-v1"
+          python - "$root" "$MATERIALIZER_SHA256" <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+          root, expected = Path(sys.argv[1]), sys.argv[2]
+          marker = json.loads((root / '.hebocrbench-source.json').read_text())
+          inventory = json.loads((root / 'SOURCE_INVENTORY.json').read_text())
+          assert marker['verification_status'] == 'verified'
+          assert marker['materializer_sha256'] == expected
+          assert marker['tree_sha256'] == inventory['tree_sha256']
+          assert len(list(root.glob('*/manifests/**/*.json'))) == 249
+          assert sum(1 for p in root.glob('*/images/**/*') if p.is_file()) == 249
+          for item in inventory['files']:
+              path = root / item['path']
+              assert path.is_file(), item['path']
+              assert hashlib.sha256(path.read_bytes()).hexdigest() == item['sha256'], item['path']
+          print(json.dumps(marker, sort_keys=True))
+          PY
+      - name: Create deterministic transport archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/materialized"
+          tar --sort=name --mtime='UTC 1980-01-01' --owner=0 --group=0 --numeric-owner \
+            -cf - he-wikisource-validated-v1 | gzip -n -1 \
+            > "$RUNNER_TEMP/he-wikisource-validated-v1.tar.gz"
+          sha256sum "$RUNNER_TEMP/he-wikisource-validated-v1.tar.gz" \
+            > "$RUNNER_TEMP/he-wikisource-validated-v1.tar.gz.sha256"
+          cp he-wikisource-validated-v1/.hebocrbench-source.json "$RUNNER_TEMP/source-marker.json"
+          cp he-wikisource-validated-v1/SOURCE_INVENTORY.json "$RUNNER_TEMP/source-inventory.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hebocrbench-source-he-wikisource-validated-v1
+          path: |
+            ${{ runner.temp }}/he-wikisource-validated-v1.tar.gz
+            ${{ runner.temp }}/he-wikisource-validated-v1.tar.gz.sha256
+            ${{ runner.temp }}/source-marker.json
+            ${{ runner.temp }}/source-inventory.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
