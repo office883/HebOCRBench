@@ -4,6 +4,9 @@ on:
   push:
     paths:
       - '.bootstrap/v4/run.txt'
+  pull_request:
+    paths:
+      - '.bootstrap/v4/run.txt'
   workflow_dispatch:
 
 permissions:
