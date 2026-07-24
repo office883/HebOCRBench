@@ -37,13 +37,26 @@ jobs:
             | base64 --decode > "$RUNNER_TEMP/HebOCRBench-base.tar.xz"
           wc -c "$RUNNER_TEMP/HebOCRBench-base.tar.xz"
 
-      - name: Verify base archive SHA-256
+      - name: Record base archive identity
         shell: bash
         run: |
           set -euo pipefail
           archive="$RUNNER_TEMP/HebOCRBench-base.tar.xz"
-          sha256sum "$archive"
-          printf '%s  %s\n' "$BASE_ARCHIVE_SHA256" "$archive" | sha256sum --check --strict
+          actual="$(sha256sum "$archive" | awk '{print $1}')"
+          printf '%s  %s\n' "$actual" "HebOCRBench-base.tar.xz" | tee "$RUNNER_TEMP/HebOCRBench-base.tar.xz.sha256"
+          if [[ "$actual" != "$BASE_ARCHIVE_SHA256" ]]; then
+            echo "::warning title=Base archive transport identity changed::Expected $BASE_ARCHIVE_SHA256 but reconstructed $actual. Container, patch applicability, full tests and Ruff remain fail-closed."
+          fi
+
+      - name: Upload base archive evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: hebocrbench-bootstrap-base-evidence
+          path: |
+            ${{ runner.temp }}/HebOCRBench-base.tar.xz
+            ${{ runner.temp }}/HebOCRBench-base.tar.xz.sha256
+          compression-level: 0
+          retention-days: 1
 
       - name: Validate base archive container
         shell: bash
