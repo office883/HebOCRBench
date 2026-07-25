@@ -1,4 +1,5 @@
-bootstrap_source_commit=3341f8d420e32d6fdf751b107ccf0ddb086ca333
+bootstrap_source_commit=249fa79e2c5ae7b2b605baff0b41b85e4bf557e4
 base_archive_sha256=2f18b65b14de12c288592423a678a071e00e165988b28a57b521370a4982a29f
 patch_sha256=ad62c09fd19e90d125a996e97157eb32f1d475d9d4bca16a68160e882d0093a4
-requested_at=2026-07-25T00:00:00Z
+requested_at=2026-07-25T01:10:00Z
+trigger=independent-chunk-decoding
