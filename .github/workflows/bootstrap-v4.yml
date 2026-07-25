@@ -31,22 +31,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat \
+          archive="$RUNNER_TEMP/HebOCRBench-base.tar.xz"
+          : > "$archive"
+          for part in \
             .bootstrap/v3/import.b64.part00 \
-            .bootstrap/v3/import.b64.part01 \
-            | base64 --decode > "$RUNNER_TEMP/HebOCRBench-base.tar.xz"
-          wc -c "$RUNNER_TEMP/HebOCRBench-base.tar.xz"
+            .bootstrap/v3/import.b64.part01
+          do
+            base64 --decode "$part" >> "$archive"
+          done
+          wc -c "$archive"
 
-      - name: Record base archive identity
+      - name: Verify base archive identity
         shell: bash
         run: |
           set -euo pipefail
           archive="$RUNNER_TEMP/HebOCRBench-base.tar.xz"
           actual="$(sha256sum "$archive" | awk '{print $1}')"
           printf '%s  %s\n' "$actual" "HebOCRBench-base.tar.xz" | tee "$RUNNER_TEMP/HebOCRBench-base.tar.xz.sha256"
-          if [[ "$actual" != "$BASE_ARCHIVE_SHA256" ]]; then
-            echo "::warning title=Base archive transport identity changed::Expected $BASE_ARCHIVE_SHA256 but reconstructed $actual. Container, patch applicability, full tests and Ruff remain fail-closed."
-          fi
+          printf '%s  %s\n' "$BASE_ARCHIVE_SHA256" "$archive" | sha256sum --check --strict
 
       - name: Upload base archive evidence
         uses: actions/upload-artifact@v4
