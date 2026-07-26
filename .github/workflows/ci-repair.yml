@@ -8,6 +8,13 @@ on:
       - tools/ci-repair.patch
       - .github/workflows/ci-repair.yml
       - .github/ci-repair-trigger
+  pull_request:
+    branches:
+      - main
+    paths:
+      - tools/ci-repair.patch
+      - .github/workflows/ci-repair.yml
+      - .github/ci-repair-trigger
   workflow_dispatch:
 
 permissions:
@@ -19,6 +26,7 @@ concurrency:
 
 jobs:
   repair:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
