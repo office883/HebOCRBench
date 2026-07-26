@@ -4,8 +4,6 @@ import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
@@ -56,7 +54,7 @@ def test_preflight_preserves_each_page_rejection_reason(tmp_path, monkeypatch) -
 
     monkeypatch.setattr(MODULE, "rank_page_candidates", lambda pages, maximum: [1, 2])
 
-    def fake_convert(*args, page_number: int, **kwargs):
+    def fake_convert(pdf_path, page_number: int, *args, **kwargs):
         if page_number == 1:
             raise MODULE.ModernPdfError(
                 "independent extractors disagree: agreement=0.750000, minimum=0.980000, "
@@ -82,7 +80,7 @@ def test_preflight_preserves_each_page_rejection_reason(tmp_path, monkeypatch) -
         {
             "page_number": 1,
             "error_type": "ModernPdfError",
-            "reason": pytest.approx if False else (
+            "reason": (
                 "independent extractors disagree: agreement=0.750000, minimum=0.980000, "
                 "anchor_order=0.990000, anchor_content=1.000000, "
                 "punctuation_content=0.750000"
