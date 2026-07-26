@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "requested_at": "2026-07-26",
+  "purpose": "HebOCRBench Modern Hebrew v1 release gate",
+  "targets": {
+    "documents": 100,
+    "pages": 500,
+    "template_families": 50,
+    "table_pages": 50,
+    "form_pages": 20,
+    "mixed_bidi_pages": 100
+  }
+}
