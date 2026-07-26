@@ -1,0 +1,265 @@
+schema_version: '1.0'
+cases:
+- id: mixed_version
+  text: בשנת 2026 הופעלה גרסה OCR-v2.1 (בטא).
+  tags:
+  - bidi:mixed
+  - content:number
+  - content:latin
+  - content:brackets
+- id: alphabet_final_forms
+  text: 'אלפבית עברי: אבגדהוזחטיךכלםמןנסעףפץצקרשת.'
+  tags:
+  - hebrew:alphabet
+  - hebrew:final_forms
+- id: final_forms_words
+  text: מלך חם גן סוף קיץ — ך ם ן ף ץ.
+  tags:
+  - hebrew:final_forms
+  - punctuation:dash
+- id: hebrew_punctuation
+  text: 'בית־ספר; ר׳ משה; תשפ״ו; סעיף: 17.'
+  tags:
+  - punctuation:maqaf
+  - punctuation:geresh
+  - punctuation:gershayim
+  - punctuation:colon
+- id: ascii_punctuation_contrast
+  text: 'בית-ספר; ר'' משה; תשפ"ו; סוף: פסוק|'
+  tags:
+  - punctuation:ascii_lookalikes
+- id: currency_percentage
+  text: 'סה״כ: ₪1,234.50; מע״מ: 17%; הנחה: -5%.'
+  tags:
+  - bidi:mixed
+  - content:currency
+  - content:percentage
+  - content:decimal
+- id: email_time
+  text: שלחו ל־qa@example.com עד 14:30.
+  tags:
+  - bidi:mixed
+  - content:email
+  - content:time
+- id: url_query
+  text: ראו https://example.org/a?x=1&lang=he לפרטים.
+  tags:
+  - bidi:mixed
+  - content:url
+  - content:query_string
+- id: nested_brackets
+  text: סעיף 3(ב)(2) — נספח א׳ [טיוטה {פנימית}].
+  tags:
+  - bidi:mixed
+  - content:nested_brackets
+  - content:number
+- id: formula
+  text: הפונקציה f(x)=x²+1 מוגדרת עבור x≥0.
+  tags:
+  - bidi:mixed
+  - content:formula
+  - content:latin
+- id: date_phone_identifier
+  text: 22/07/2026, 03-555-1234, ID-2026-אב-17.
+  tags:
+  - bidi:mixed
+  - content:date
+  - content:phone
+  - content:identifier
+- id: time_range
+  text: הפגישה תתקיים 09:15–10:45 בחדר B-12.
+  tags:
+  - bidi:mixed
+  - content:time
+  - content:range
+  - content:identifier
+- id: decimal_scientific
+  text: המדידה היא -12.75°C, והשגיאה 3.2×10⁻⁴.
+  tags:
+  - bidi:mixed
+  - content:decimal
+  - content:scientific
+- id: ipv4_port
+  text: השרת 192.168.1.20:8080 החזיר HTTP 404.
+  tags:
+  - bidi:mixed
+  - content:network
+  - content:latin
+- id: file_path
+  text: שמרו בקובץ C:\OCR\he\page_001.json.
+  tags:
+  - bidi:mixed
+  - content:path
+  - content:latin
+- id: legal_reference
+  text: 'ראו חוק־יסוד: כבוד האדם וחירותו, סעיף 8(א).'
+  tags:
+  - punctuation:maqaf
+  - content:legal
+  - content:brackets
+- id: hebrew_numerals
+  text: שנת תשפ״ו, פרק י״ב, סעיף ג׳, יום ט״ו בשבט.
+  tags:
+  - hebrew:numerals
+  - punctuation:geresh
+  - punctuation:gershayim
+- id: abbreviations
+  text: צה״ל, מנכ״ל, עו״ד, ד״ר, רס״ן ור׳ יהודה.
+  tags:
+  - hebrew:abbreviations
+  - punctuation:geresh
+  - punctuation:gershayim
+- id: quotes
+  text: 'הוא אמר: ״זהו ‘מבחן’ OCR, לא תיקון לשוני.״'
+  tags:
+  - punctuation:quotes
+  - bidi:mixed
+  - content:latin
+- id: prefixes
+  text: וכשבבית־הספר ילמדו, מהספר ומהמחברת יעתיקו.
+  tags:
+  - hebrew:prefixes
+  - punctuation:maqaf
+- id: confusable_letters
+  text: 'זוגות קשים: ד–ר–ך; ו–י–ן; ה–ח–ת; כ–ב–נ.'
+  tags:
+  - hebrew:confusables
+  - punctuation:dash
+- id: vocalized_full
+  text: שָׁלוֹם לְכֻלָּם, וּבְרוּכִים הַבָּאִים.
+  vocalization: full
+  tags:
+  - marks:vowels
+  - marks:dagesh
+  - marks:shin_dot
+- id: vocalized_partial
+  text: הַמערכת תעבוד גם בטקסט מנוקד חֶלקית.
+  vocalization: partial
+  tags:
+  - marks:partial
+- id: shin_sin
+  text: שָׁם שָׂרָה שִׁיר, וְשָׂר שָׁר.
+  vocalization: full
+  tags:
+  - marks:shin_dot
+  - marks:sin_dot
+  - marks:vowels
+- id: dagesh_mapiq
+  text: בַּבַּיִת כָּתְבָהּ מַפָּה קְטַנָּה.
+  vocalization: full
+  tags:
+  - marks:dagesh
+  - marks:mapiq
+  - marks:vowels
+- id: maqaf_vocalized
+  text: כָּל־הָעָם רָאוּ אֶת־הַקּוֹלוֹת.
+  vocalization: full
+  tags:
+  - marks:vowels
+  - punctuation:maqaf
+- id: code_expression
+  text: הערך result = foo_bar(17); הוחזר כ־true.
+  tags:
+  - bidi:mixed
+  - content:code
+  - content:brackets
+- id: product_models
+  text: דגמים A12, A-12, A_12 ו־A/12 אינם זהים.
+  tags:
+  - bidi:mixed
+  - content:identifier
+  - punctuation:maqaf
+- id: measurements
+  text: אורך 12.5 mm, משקל 3 kg, נפח 250 mL.
+  tags:
+  - bidi:mixed
+  - content:units
+  - content:decimal
+- id: coordinates
+  text: 'קואורדינטות: 31.7683°N, 35.2137°E.'
+  tags:
+  - bidi:mixed
+  - content:coordinates
+  - content:decimal
+- id: ranges_slashes
+  text: עמודים 12–19; יחס 3/4; גרסה 1.2.3-beta.
+  tags:
+  - bidi:mixed
+  - content:range
+  - content:version
+- id: isbn_doi
+  text: ISBN 978-1-4028-9462-6; DOI 10.1000/xyz123.
+  tags:
+  - bidi:mixed
+  - content:bibliographic
+- id: bank_dummy
+  text: אסמכתא 00012345; חשבון 123-456789; סכום ₪42.00.
+  tags:
+  - bidi:mixed
+  - content:finance
+  - content:identifier
+- id: multiple_sentences
+  text: הדף נסרק. התמונה הוטתה ב־2°. אחר כך תוקנה.
+  tags:
+  - content:sentences
+  - bidi:mixed
+- id: hyphens_dashes
+  text: מקף־עברי, מקף-ASCII, קו–בינוני וקו—ארוך.
+  tags:
+  - punctuation:maqaf
+  - punctuation:hyphen
+  - punctuation:dashes
+- id: bracket_semantics
+  text: (פותח) [מרובע] {מסולסל} <זוויתי>.
+  tags:
+  - content:brackets
+- id: punctuation_dense
+  text: 'מה?! כן... אולי; לא: ובכל־זאת—נבדוק.'
+  tags:
+  - punctuation:dense
+  - punctuation:maqaf
+  - punctuation:dash
+- id: quotation_bibliography
+  text: כהן, ד׳ (2024), ״זיהוי כתב עברי״, עמ׳ 17–29.
+  tags:
+  - content:bibliography
+  - punctuation:geresh
+  - punctuation:gershayim
+- id: mixed_language_names
+  text: החוקרים Smith, García ו־Müller פרסמו ב־2025.
+  tags:
+  - bidi:mixed
+  - content:latin
+  - content:diacritics_latin
+- id: domain_subdomain
+  text: היכנסו אל docs.he.example.co.il/help/v2.
+  tags:
+  - bidi:mixed
+  - content:url
+- id: markdown_like
+  text: 'כותרת #1: **טקסט** אינו הוראת Markdown ל־OCR.'
+  tags:
+  - bidi:mixed
+  - content:markup
+  - content:latin
+- id: serials
+  text: 'SN: AB12-CD34-EF56; Batch: 2026-07-22-A.'
+  tags:
+  - bidi:mixed
+  - content:serial
+- id: mixed_parenthetical_english
+  text: המונח optical character recognition (OCR) נכתב באנגלית.
+  tags:
+  - bidi:mixed
+  - content:latin
+  - content:brackets
+- id: final_nonfinal_edge
+  text: שמות ומילים שאולות עשויים להסתיים בכ, מ, נ, פ או צ לפי המקור.
+  tags:
+  - hebrew:final_forms
+  - hebrew:nonfinal_at_end
+- id: line_break_hyphenation
+  text: שבירת־שורה פיזית אינה בהכרח גבול של מילה לוגית.
+  tags:
+  - punctuation:maqaf
+  - layout:line_break

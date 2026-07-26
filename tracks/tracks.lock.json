@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0",
+  "tracks": {
+    "modern-bidi-v1": {
+      "config_fingerprint": "0f4f2144ceaef6219b80f3e1b2415b078b1f59785a33a2d041ed3d5a734fc48d",
+      "filename": "modern-bidi-v1.yaml",
+      "prediction_mode": "unicode-conformance",
+      "sha256": "43cfc535c70fcb93bfe6371f9e1dd8c6a854a906b8a8a3a49b85bce1f711329f",
+      "task": "unicode-conformance",
+      "title": "Modern Hebrew Unicode and BiDi conformance"
+    },
+    "modern-forms-v1": {
+      "config_fingerprint": "8c912f6f0297d465cc92e71816ef3bc96e727f7cada316220fa6c0567335ff7c",
+      "filename": "modern-forms-v1.yaml",
+      "prediction_mode": "closed-schema-form",
+      "sha256": "11b973098fbc80f7e1175db727dccf7f7823306574ad836d06827a28c43207fc",
+      "task": "form-extraction",
+      "title": "Modern Hebrew closed-schema form extraction"
+    },
+    "modern-handwriting-v1": {
+      "config_fingerprint": "c3d28f3d98668bf02ca897cff91058d5724791f8ae6da9b9b48aac4bb860cde0",
+      "filename": "modern-handwriting-v1.yaml",
+      "prediction_mode": "oracle-layout",
+      "sha256": "c3803ab68db7af1d612df6f1cbdd5e726cd75cf4bf50d47b9556af3092e4d03b",
+      "task": "handwriting-text-recognition",
+      "title": "Modern Hebrew handwriting line recognition"
+    },
+    "modern-line-recognition-v1": {
+      "config_fingerprint": "a00e812b246ad4c49e5a02bebd28f3d311f8addde265d33833339ceed0b6feb5",
+      "filename": "modern-line-recognition-v1.yaml",
+      "prediction_mode": "oracle-layout",
+      "sha256": "d7c93a04fa4adefb634f87b432c4fb518821e04dff4f6016d8e54cce46963508",
+      "task": "text-recognition",
+      "title": "Modern Hebrew line recognition with oracle layout"
+    },
+    "modern-page-ocr-v1": {
+      "config_fingerprint": "ff5bdbc2507b3167bc17491729eddbba58ac6f7af08916bf831f78fbbe64d27b",
+      "filename": "modern-page-ocr-v1.yaml",
+      "prediction_mode": "end-to-end-page",
+      "sha256": "36c672564906e69be78025d7608b4433a92e187a89979203edb6ba8eef43914c",
+      "task": "page-ocr",
+      "title": "Blind end-to-end Modern Hebrew page OCR"
+    },
+    "modern-robustness-v1": {
+      "config_fingerprint": "b55de5f6fb2bb82ace9eb06af9d16e6ddc0e5fd31fecbb1e8d6df6180267abfa",
+      "filename": "modern-robustness-v1.yaml",
+      "prediction_mode": "end-to-end-page",
+      "sha256": "3af0e101ab907f4bb30a847a72984da7d6492b210a74fdc423da45b37feaa1bc",
+      "task": "robustness",
+      "title": "Modern Hebrew OCR robustness"
+    },
+    "modern-tables-v1": {
+      "config_fingerprint": "a508b6cdaa3d15212ea8b4dac0fce0a958aee5d48e1ab04c53a66979b4776bf4",
+      "filename": "modern-tables-v1.yaml",
+      "prediction_mode": "table-structure",
+      "sha256": "5f602a95090e11c25c5c24bbfc42e5d942aa0ead7b5813253cb0008c957c3e7d",
+      "task": "table-recognition",
+      "title": "Blind Modern Hebrew table recognition"
+    }
+  },
+  "tracks_version": "1.0.0"
+}

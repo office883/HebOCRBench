@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hebocrbench.org/schema/data-profiles-1.0.json",
+  "title": "HebOCRBench Data Profiles",
+  "type": "object",
+  "required": ["schema_version", "profiles"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "profiles": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["description", "source_ids", "allowed_license_classes", "require_acceptance"],
+        "properties": {
+          "description": {"type": "string", "minLength": 1},
+          "source_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+          "allowed_license_classes": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+          "require_acceptance": {"type": "boolean"},
+          "primary_score_only": {"type": "boolean"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,36 @@
+schema_version: '1.0'
+track:
+  id: modern-handwriting-v1
+  version: 1.0.0
+  title: Modern Hebrew handwriting line recognition
+  description: Writer-disjoint real human handwriting extension, reported separately from printed OCR.
+  official: true
+  task: handwriting-text-recognition
+  prediction_mode: oracle-layout
+  accepted_gold_tracks: [modern_handwriting]
+  required_prediction_fields: [page_id, regions, regions.lines.line_id, regions.lines.text]
+  primary_metrics:
+    - recognition.line_gcer
+    - recognition.line_cer
+    - recognition.line_wer
+    - recognition.line_exact_rate
+matching:
+  use_shared_ids: true
+  line_iou_threshold: 0.30
+  region_iou_threshold: 0.50
+conformance:
+  diagnostic_track: modern_bidi
+  min_exact_line_rate: 0.98
+  min_ltr_run_exact_rate: 0.99
+  min_numeric_exact_rate: 0.995
+  min_bracket_exact_rate: 0.995
+  max_visual_order_failure_count: 0
+  max_bidi_control_count: 0
+  max_unbalanced_bidi_controls: 0
+statistics:
+  bootstrap_samples: 2000
+  confidence: 0.95
+  seed: 20260725
+  worst_page_count: 25
+  worst_slice_min_pages: 10
+slice_fields: [metadata.writer, metadata.source_doc, metadata.age_group]

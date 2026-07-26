@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hebocrbench.org/schema/prediction-page-1.0.json",
+  "title": "HebOCRBench Prediction Page",
+  "type": "object",
+  "required": ["schema_version", "page_id"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "page_id": {"type": "string", "minLength": 1},
+    "page_text": {"type": "string"},
+    "regions": {"type": "array", "items": {"$ref": "https://hebocrbench.org/schema/gold-page-1.0.json#/$defs/region"}, "default": []},
+    "reading_order": {"$ref": "https://hebocrbench.org/schema/gold-page-1.0.json#/$defs/readingOrder"},
+    "tables": {"type": "array", "items": {"$ref": "https://hebocrbench.org/schema/gold-page-1.0.json#/$defs/table"}, "default": []},
+    "form_fields": {"type": "array", "items": {"$ref": "https://hebocrbench.org/schema/gold-page-1.0.json#/$defs/formField"}, "default": []},
+    "model": {"type": "object"},
+    "timing_ms": {"type": "number", "minimum": 0}
+  },
+  "additionalProperties": true
+}

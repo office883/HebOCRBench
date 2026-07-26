@@ -15,10 +15,7 @@ runs/
 
 .worktrees/
 
-# These paths are excluded from ordinary Git history because Git is not the
-# distribution layer for immutable multi-GB benchmark payloads. They remain
-# first-class HebOCRBench sources/artifacts and are delivered through Releases,
-# object storage, Git LFS where suitable, or pinned federated acquisition.
+# Materialized corpora and acquisition caches never belong in Git
 .hebocrbench-cache/
 corpus/
 corpora-materialized/
@@ -29,19 +26,10 @@ organizer-pack/
 participant-pack/
 source-snapshots/
 artifacts/
-baseline-runs/
 
-# Hidden-test and organizer secrets must never enter the public repository.
-organizer-secret*
-*hmac-key*
-*.secret
-.env
-.env.*
-
-# Release products are attached to versioned releases, not committed as blobs.
+# Release products are attached to releases, not committed
 *.whl
 *.tar.gz
-*.tar.xz
 *.tgz
 *.zip
 *.bundle
@@ -49,8 +37,3 @@ SBOM*.json
 SHA256SUMS*
 CERTIFIED*
 FROZEN*
-
-# Temporary import/bootstrap transports are forbidden on release branches.
-.bootstrap/
-*.b64.part*
-transfer-trigger.txt

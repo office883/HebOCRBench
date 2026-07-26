@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PcGts xmlns="http://schema.primaresearch.org/PAGE/gts/pagecontent/2019-07-15">
+  <Metadata><Creator>HebOCRBench fixture</Creator></Metadata>
+  <Page imageFilename="page.jpg" imageWidth="1200" imageHeight="800" primaryLanguage="Hebrew" readingDirection="right-to-left">
+    <ReadingOrder>
+      <OrderedGroup id="ro">
+        <RegionRefIndexed index="0" regionRef="r-right"/>
+        <RegionRefIndexed index="1" regionRef="r-left"/>
+      </OrderedGroup>
+    </ReadingOrder>
+    <TextRegion id="r-left" type="body" primaryLanguage="English" readingDirection="left-to-right">
+      <Coords points="80,100 540,100 540,700 80,700"/>
+      <TextLine id="l-left">
+        <Coords points="100,150 520,150 520,220 100,220"/>
+        <Baseline points="100,205 520,205"/>
+        <TextEquiv><Unicode>OCR-v2.1</Unicode></TextEquiv>
+      </TextLine>
+    </TextRegion>
+    <TextRegion id="r-right" type="body" primaryLanguage="Hebrew" readingDirection="right-to-left">
+      <Coords points="660,100 1120,100 1120,700 660,700"/>
+      <TextLine id="l-right-1">
+        <Coords points="680,150 1100,150 1100,220 680,220"/>
+        <Baseline points="1100,205 680,205"/>
+        <TextEquiv><Unicode>בשנת 2026</Unicode></TextEquiv>
+      </TextLine>
+      <TextLine id="l-right-2">
+        <Coords points="680,260 1100,260 1100,330 680,330"/>
+        <Baseline points="1100,315 680,315"/>
+        <Word id="w1"><Coords points="920,270 1100,270 1100,330 920,330"/><TextEquiv><Unicode>שלום</Unicode></TextEquiv></Word>
+        <Word id="w2"><Coords points="760,270 900,270 900,330 760,330"/><TextEquiv><Unicode>עולם</Unicode></TextEquiv></Word>
+      </TextLine>
+    </TextRegion>
+  </Page>
+</PcGts>

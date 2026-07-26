@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "requested_at": "2026-07-26T13:08:00+03:00",
+  "attempt": 2,
+  "purpose": "HebOCRBench Modern Hebrew v1 release gate after reusable form-pattern repair",
+  "targets": {
+    "documents": 100,
+    "pages": 500,
+    "template_families": 50,
+    "table_pages": 50,
+    "form_pages": 20,
+    "mixed_bidi_pages": 100
+  }
+}

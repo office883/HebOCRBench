@@ -1,0 +1,30 @@
+schema_version: '1.0'
+profiles_version: 1.0.0
+profiles:
+  modern-hebrew-print-v1:
+    title: HebOCRBench 1.0 Modern Hebrew Print Profile
+    description: Canonical Modern Hebrew printed-document benchmark profile with real public documents and a locked Unicode/BiDi conformance suite.
+    source_ids:
+      - modern-bidi-diagnostic-v1
+      - modern-public-documents-v1
+    allowed_license_tiers: [bundled, external-review]
+    certification_class: official-modern-hebrew-print
+    score_policy: guarded-five-track-weighted-geometric
+  modern-hebrew-development-v1:
+    title: HebOCRBench 1.0 Modern Hebrew Development Profile
+    description: Adds the modern print-line development source without changing the official hidden-test claim.
+    source_ids:
+      - modern-bidi-diagnostic-v1
+      - modern-public-documents-v1
+      - modern-print-lines-development-v1
+    allowed_license_tiers: [bundled, external-review]
+    certification_class: development-modern-hebrew-print
+    score_policy: per-source-no-official-rank
+  modern-hebrew-handwriting-v1:
+    title: HebOCRBench 1.0 Modern Hebrew Handwriting Extension
+    description: Separate writer-disjoint Modern Hebrew handwriting line-recognition extension.
+    source_ids:
+      - modern-handwriting-lines-v1
+    allowed_license_tiers: [external-review]
+    certification_class: extension-modern-hebrew-handwriting
+    score_policy: separate-extension-no-print-blending

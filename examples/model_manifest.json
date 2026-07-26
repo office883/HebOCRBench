@@ -1,0 +1,14 @@
+{
+  "model_name": "example-ocr",
+  "model_version": "2026-07-22",
+  "task": "end_to_end_page_ocr",
+  "language_hint": "he",
+  "preprocessing": ["orientation_detection"],
+  "postprocessing": [],
+  "prompt": null,
+  "temperature": null,
+  "hardware": "declare-me",
+  "software": "declare-me",
+  "training_data_statement": "declare known Hebrew benchmark exposure",
+  "notes": "Text output must be Unicode logical order."
+}

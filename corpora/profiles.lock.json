@@ -1,0 +1,49 @@
+{
+  "profiles": {
+    "modern-hebrew-development-v1": {
+      "allowed_license_tiers": [
+        "bundled",
+        "external-review"
+      ],
+      "certification_class": "development-modern-hebrew-print",
+      "description": "Adds the modern print-line development source without changing the official hidden-test claim.",
+      "score_policy": "per-source-no-official-rank",
+      "source_ids": [
+        "modern-bidi-diagnostic-v1",
+        "modern-public-documents-v1",
+        "modern-print-lines-development-v1"
+      ],
+      "title": "HebOCRBench 1.0 Modern Hebrew Development Profile"
+    },
+    "modern-hebrew-handwriting-v1": {
+      "allowed_license_tiers": [
+        "external-review"
+      ],
+      "certification_class": "extension-modern-hebrew-handwriting",
+      "description": "Separate writer-disjoint Modern Hebrew handwriting line-recognition extension.",
+      "score_policy": "separate-extension-no-print-blending",
+      "source_ids": [
+        "modern-handwriting-lines-v1"
+      ],
+      "title": "HebOCRBench 1.0 Modern Hebrew Handwriting Extension"
+    },
+    "modern-hebrew-print-v1": {
+      "allowed_license_tiers": [
+        "bundled",
+        "external-review"
+      ],
+      "certification_class": "official-modern-hebrew-print",
+      "description": "Canonical Modern Hebrew printed-document benchmark profile with real public documents and a locked Unicode/BiDi conformance suite.",
+      "score_policy": "guarded-five-track-weighted-geometric",
+      "source_ids": [
+        "modern-bidi-diagnostic-v1",
+        "modern-public-documents-v1"
+      ],
+      "title": "HebOCRBench 1.0 Modern Hebrew Print Profile"
+    }
+  },
+  "profiles_fingerprint": "4d84268734a17a60717f86fa4eb44ac703dc301dbdaca99b19efbe0cb7b27777",
+  "profiles_version": "1.0.0",
+  "registry_fingerprint": "2958ab9868ce10754ff3ad4144b5abf95b4c32d4c35daf993057f73cf8fe730f",
+  "schema_version": "1.0"
+}

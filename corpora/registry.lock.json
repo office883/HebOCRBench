@@ -1,0 +1,285 @@
+{
+  "benchmark": "HebOCRBench",
+  "benchmark_version": "1.0.0",
+  "registry_fingerprint": "2958ab9868ce10754ff3ad4144b5abf95b4c32d4c35daf993057f73cf8fe730f",
+  "registry_version": "1.0.0",
+  "schema_version": "1.0",
+  "sources": {
+    "modern-bidi-diagnostic-v1": {
+      "artifacts": [],
+      "citation": {
+        "key": "hebocrbench-modern-bidi-v1",
+        "text": "HebOCRBench contributors. Modern Hebrew Unicode and BiDi diagnostic suite, version 1.0.0."
+      },
+      "converter": "none",
+      "discovery": {
+        "annotation_globs": [
+          "gold.jsonl"
+        ],
+        "exclude_globs": [],
+        "image_roots": [
+          "images"
+        ],
+        "split_from_path": false
+      },
+      "homepage": "urn:hebocrbench:modern-bidi:1.0.0",
+      "languages": [
+        "he",
+        "en"
+      ],
+      "license": {
+        "authority": "HebOCRBench 1.0 release",
+        "conflicts": [],
+        "redistribution": "allowed",
+        "requires_acceptance": false,
+        "spdx": "CC0-1.0",
+        "tier": "bundled",
+        "uri": "https://creativecommons.org/publicdomain/zero/1.0/"
+      },
+      "metadata": {
+        "document_type": "diagnostic_card",
+        "era": "modern",
+        "layout_type": "mixed",
+        "script_style": "modern_square_print",
+        "source_type": "benchmark_generated",
+        "vocalization": "mixed"
+      },
+      "script": "Hebr",
+      "source_version": "1.0.0",
+      "split": {
+        "group_fields": [
+          "document_id"
+        ],
+        "ratios": {
+          "diagnostic": 1.0
+        },
+        "seed": 20260725,
+        "strategy": "fixed"
+      },
+      "status": "diagnostic",
+      "task": "conformance",
+      "title": "HebOCRBench Modern Hebrew Unicode and BiDi diagnostic suite",
+      "track": "modern_bidi"
+    },
+    "modern-handwriting-lines-v1": {
+      "artifacts": [
+        {
+          "archive": "git",
+          "artifact_id": "hub-repository",
+          "checksum": null,
+          "filename": "ssdataanalysis-hebrew-htr-curated-v1",
+          "mirrors": [],
+          "required": false,
+          "revision": "ec4c7074ce2b3edc79889b00319e200d129eecf7",
+          "size_bytes": null,
+          "url": "git+https://huggingface.co/datasets/ssdataanalysis/hebrew-htr-curated-v1"
+        }
+      ],
+      "citation": {
+        "key": "ssdataanalysis-hebrew-htr-curated-v1",
+        "text": "ssdataanalysis. Hebrew HTR Curated v1, stage3_human_finetune writer-disjoint holdout."
+      },
+      "converter": "hf-image-text",
+      "discovery": {
+        "annotation_globs": [
+          "stage3_human_finetune/test-*.parquet"
+        ],
+        "exclude_globs": [],
+        "image_roots": [
+          "stage3_human_finetune"
+        ],
+        "split_from_path": true
+      },
+      "homepage": "https://huggingface.co/datasets/ssdataanalysis/hebrew-htr-curated-v1",
+      "languages": [
+        "he"
+      ],
+      "license": {
+        "authority": "Source-level provenance in curation_manifest.json and upstream dataset cards",
+        "conflicts": [
+          "Handwriting remains a separately reported extension and is never blended into the printed-document headline."
+        ],
+        "redistribution": "conditional",
+        "requires_acceptance": false,
+        "spdx": "LicenseRef-Source-Metadata",
+        "tier": "external-review",
+        "uri": null
+      },
+      "metadata": {
+        "document_type": "handwritten_line",
+        "era": "modern",
+        "layout_type": "line",
+        "script_style": "modern_israeli_handwriting",
+        "source_type": "real_human_handwriting",
+        "vocalization": "none"
+      },
+      "script": "Hebr",
+      "source_version": "ec4c7074ce2b3edc79889b00319e200d129eecf7",
+      "split": {
+        "group_fields": [
+          "metadata.writer"
+        ],
+        "strategy": "upstream",
+        "upstream_map": {
+          "test": "test",
+          "train": "train",
+          "validation": "dev"
+        }
+      },
+      "status": "supplementary",
+      "task": "handwriting_line_recognition",
+      "title": "Hebrew HTR Curated v1 modern human handwriting holdout",
+      "track": "modern_handwriting"
+    },
+    "modern-print-lines-development-v1": {
+      "artifacts": [
+        {
+          "archive": "git",
+          "artifact_id": "hub-repository",
+          "checksum": null,
+          "filename": "ssdataanalysis-hebrew-ocr-corpus",
+          "mirrors": [],
+          "required": false,
+          "revision": "ce4d1c347bd4e8b98a23f23256b0ecf01fa663c5",
+          "size_bytes": null,
+          "url": "git+https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-corpus"
+        }
+      ],
+      "citation": {
+        "key": "ssdataanalysis-hebrew-ocr-corpus-modern-lines",
+        "text": "ssdataanalysis. Hebrew OCR Corpus — Clean Standalone v2, modern_print_lines subset."
+      },
+      "converter": "hf-image-text",
+      "discovery": {
+        "annotation_globs": [
+          "manifests/strict_all.jsonl.gz"
+        ],
+        "exclude_globs": [],
+        "image_roots": [
+          "webdataset/modern_print_lines"
+        ],
+        "split_from_path": true
+      },
+      "homepage": "https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-corpus",
+      "languages": [
+        "he",
+        "en"
+      ],
+      "license": {
+        "authority": "Per-sample provenance and rights_status fields in the dataset",
+        "conflicts": [
+          "This source is development-only and is not an official hidden test source."
+        ],
+        "redistribution": "conditional",
+        "requires_acceptance": false,
+        "spdx": "LicenseRef-Owner-Generated-Mixed-Provenance",
+        "tier": "external-review",
+        "uri": null
+      },
+      "metadata": {
+        "document_type": "synthetic_and_rendered_line",
+        "era": "modern",
+        "layout_type": "line",
+        "script_style": "modern_square_print",
+        "source_type": "development_corpus",
+        "vocalization": "none"
+      },
+      "script": "Hebr",
+      "source_version": "ce4d1c347bd4e8b98a23f23256b0ecf01fa663c5",
+      "split": {
+        "group_fields": [
+          "metadata.curation_group_id"
+        ],
+        "strategy": "upstream",
+        "upstream_map": {
+          "test": "test",
+          "train": "train",
+          "validation": "dev"
+        }
+      },
+      "status": "supplementary",
+      "task": "line_recognition_development",
+      "title": "Hebrew OCR Corpus modern print lines development subset",
+      "track": "modern_line_recognition"
+    },
+    "modern-public-documents-v1": {
+      "artifacts": [
+        {
+          "archive": "none",
+          "artifact_id": "knesset-open-data-api",
+          "checksum": null,
+          "filename": "modern-public-documents-20260725-v1",
+          "mirrors": [],
+          "required": true,
+          "revision": "2026-07-26-v1",
+          "size_bytes": null,
+          "url": "api+https://knesset.gov.il/Odata/ParliamentInfo.svc/"
+        }
+      ],
+      "citation": {
+        "key": "hebocrbench-modern-public-documents-v1",
+        "text": "HebOCRBench contributors. Revision-locked contemporary Hebrew public-document snapshot derived from Knesset Open Data and source PDFs."
+      },
+      "converter": "modern-pdf",
+      "discovery": {
+        "annotation_globs": [
+          "manifests/*.json"
+        ],
+        "exclude_globs": [],
+        "image_roots": [
+          "pdfs"
+        ],
+        "split_from_path": false
+      },
+      "homepage": "https://knesset.gov.il/Odata/ParliamentInfo.svc/",
+      "languages": [
+        "he",
+        "en"
+      ],
+      "license": {
+        "authority": "Knesset Open Data records and the source PDF attached to each manifest",
+        "conflicts": [
+          "Source documents retain their own public-sector notices; HebOCRBench distributes manifests, hashes and acquisition recipes unless direct mirroring is explicitly allowed."
+        ],
+        "redistribution": "federated-only",
+        "requires_acceptance": false,
+        "spdx": "LicenseRef-Israeli-Public-Documents",
+        "tier": "external-review",
+        "uri": "https://www.knesset.gov.il/"
+      },
+      "metadata": {
+        "document_type": "public_document",
+        "era": "modern",
+        "layout_type": "mixed",
+        "minimum_documents": 100,
+        "minimum_form_pages": 20,
+        "minimum_mixed_bidi_pages": 100,
+        "minimum_pages": 500,
+        "minimum_table_pages": 50,
+        "minimum_template_families": 50,
+        "script_style": "modern_square_print",
+        "source_collection": "Contemporary Hebrew public documents",
+        "source_type": "verified_digital_pdf",
+        "vocalization": "none"
+      },
+      "script": "Hebr",
+      "source_version": "2026-07-26-v1",
+      "split": {
+        "group_fields": [
+          "metadata.template_family"
+        ],
+        "ratios": {
+          "dev": 0.15,
+          "test": 0.15,
+          "train": 0.7
+        },
+        "seed": 20260725,
+        "strategy": "hash_group"
+      },
+      "status": "core",
+      "task": "page_ocr",
+      "title": "Contemporary Hebrew Public Documents",
+      "track": "modern_page_ocr"
+    }
+  }
+}

@@ -1,0 +1,174 @@
+name: Build Modern Hebrew public-document corpus
+
+# Release gate: this workflow must pass on the PR head before merge.
+on:
+  workflow_dispatch:
+    inputs:
+      target_documents:
+        description: Minimum accepted public documents
+        required: true
+        default: '100'
+      target_pages:
+        description: Minimum accepted benchmark pages
+        required: true
+        default: '500'
+      maximum_records_per_entity:
+        description: Maximum Knesset catalog rows inspected per entity
+        required: true
+        default: '12000'
+      minimum_table_pages:
+        description: Minimum selected pages containing tables
+        required: true
+        default: '50'
+      minimum_form_pages:
+        description: Minimum selected pages containing form signals
+        required: true
+        default: '20'
+      minimum_mixed_bidi_pages:
+        description: Minimum selected pages containing Hebrew with Latin or numbers
+        required: true
+        default: '100'
+  push:
+    paths:
+      - .github/modern-public-corpus-request.json
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/modern-public-corpus-request.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: modern-public-corpus-v1
+  cancel-in-progress: true
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      TARGET_DOCUMENTS: ${{ inputs.target_documents || '100' }}
+      TARGET_PAGES: ${{ inputs.target_pages || '500' }}
+      MAXIMUM_RECORDS_PER_ENTITY: ${{ inputs.maximum_records_per_entity || '12000' }}
+      MINIMUM_TABLE_PAGES: ${{ inputs.minimum_table_pages || '50' }}
+      MINIMUM_FORM_PAGES: ${{ inputs.minimum_form_pages || '20' }}
+      MINIMUM_MIXED_BIDI_PAGES: ${{ inputs.minimum_mixed_bidi_pages || '100' }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install deterministic extraction stack
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends fonts-noto-core poppler-utils
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[corpus]'
+
+      - name: Materialize and audit source snapshot
+        id: materialize
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          root="$RUNNER_TEMP/modern-public-documents-v1"
+          log="$RUNNER_TEMP/modern-public-materialize.log"
+          python scripts/build_modern_public_corpus.py \
+            --output "$root" \
+            --target-documents "$TARGET_DOCUMENTS" \
+            --target-pages "$TARGET_PAGES" \
+            --maximum-records-per-entity "$MAXIMUM_RECORDS_PER_ENTITY" \
+            --minimum-table-pages "$MINIMUM_TABLE_PAGES" \
+            --minimum-form-pages "$MINIMUM_FORM_PAGES" \
+            --minimum-mixed-bidi-pages "$MINIMUM_MIXED_BIDI_PAGES" \
+            --overwrite 2>&1 | tee "$log"
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > "$RUNNER_TEMP/modern-public-materialize.status"
+          exit 0
+
+      - name: Upload materialization diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hebocrbench-modern-public-diagnostics
+          path: |
+            ${{ runner.temp }}/modern-public-materialize.log
+            ${{ runner.temp }}/modern-public-materialize.status
+            ${{ runner.temp }}/modern-public-documents-v1/.hebocrbench-source.json
+            ${{ runner.temp }}/modern-public-documents-v1/SOURCE_INVENTORY.json
+            ${{ runner.temp }}/modern-public-documents-v1/SOURCE_EVIDENCE.json
+            ${{ runner.temp }}/modern-public-documents-v1/evidence/*.json
+          if-no-files-found: warn
+          include-hidden-files: true
+          compression-level: 9
+          retention-days: 14
+
+      - name: Require successful materialization
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat "$RUNNER_TEMP/modern-public-materialize.status")" = '0'
+
+      - name: Verify source snapshot evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/modern-public-documents-v1"
+          test -s "$root/.hebocrbench-source.json"
+          test -s "$root/SOURCE_INVENTORY.json"
+          test -s "$root/SOURCE_EVIDENCE.json"
+          python - "$root" "$TARGET_DOCUMENTS" "$TARGET_PAGES" "$MINIMUM_TABLE_PAGES" "$MINIMUM_FORM_PAGES" "$MINIMUM_MIXED_BIDI_PAGES" <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          minimum_documents = int(sys.argv[2])
+          minimum_pages = int(sys.argv[3])
+          minimum_tables = int(sys.argv[4])
+          minimum_forms = int(sys.argv[5])
+          minimum_mixed = int(sys.argv[6])
+          marker = json.loads((root / '.hebocrbench-source.json').read_text(encoding='utf-8'))
+          inventory = json.loads((root / 'SOURCE_INVENTORY.json').read_text(encoding='utf-8'))
+          evidence = json.loads((root / 'SOURCE_EVIDENCE.json').read_text(encoding='utf-8'))
+          summary = json.loads((root / 'evidence' / 'summary.json').read_text(encoding='utf-8'))
+          assert marker['verification_status'] == 'verified'
+          assert evidence['extra']['target_reached'] is True
+          assert summary['accepted_document_count'] >= minimum_documents
+          assert summary['accepted_page_count'] >= minimum_pages
+          assert summary['template_family_count'] >= 50
+          assert summary['table_page_count'] >= minimum_tables
+          assert summary['form_page_count'] >= minimum_forms
+          assert summary['mixed_bidi_page_count'] >= minimum_mixed
+          for item in inventory['files']:
+              path = root / item['path']
+              assert path.is_file(), item['path']
+              assert hashlib.sha256(path.read_bytes()).hexdigest() == item['sha256'], item['path']
+          print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+          PY
+
+      - name: Create deterministic source transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          tar --sort=name --mtime='UTC 1980-01-01' --owner=0 --group=0 --numeric-owner \
+            -cf - modern-public-documents-v1 | gzip -n -1 \
+            > modern-public-documents-v1.tar.gz
+          sha256sum modern-public-documents-v1.tar.gz \
+            > modern-public-documents-v1.tar.gz.sha256
+
+      - name: Upload verified source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: hebocrbench-modern-public-documents-v1
+          path: |
+            ${{ runner.temp }}/modern-public-documents-v1.tar.gz
+            ${{ runner.temp }}/modern-public-documents-v1.tar.gz.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

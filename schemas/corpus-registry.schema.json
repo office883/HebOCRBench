@@ -1,0 +1,403 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hebocrbench.org/schema/corpus-registry-1.0.json",
+  "title": "HebOCRBench Corpus Registry",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "registry_version",
+    "benchmark",
+    "sources"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "registry_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "benchmark": {
+      "const": "HebOCRBench"
+    },
+    "sources": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/$defs/source"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "checksum": {
+      "type": "object",
+      "required": [
+        "algorithm",
+        "value"
+      ],
+      "properties": {
+        "algorithm": {
+          "enum": [
+            "md5",
+            "sha1",
+            "sha256",
+            "sha512"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "minLength": 32
+        }
+      },
+      "additionalProperties": false
+    },
+    "artifact": {
+      "type": "object",
+      "required": [
+        "artifact_id",
+        "url",
+        "filename"
+      ],
+      "properties": {
+        "artifact_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "filename": {
+          "type": "string",
+          "minLength": 1
+        },
+        "archive": {
+          "enum": [
+            "none",
+            "zip",
+            "tar",
+            "tar.gz",
+            "tgz"
+          ]
+        },
+        "checksum": {
+          "$ref": "#/$defs/checksum"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mirrors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "license": {
+      "type": "object",
+      "required": [
+        "spdx",
+        "tier",
+        "redistribution",
+        "requires_acceptance",
+        "uri"
+      ],
+      "properties": {
+        "spdx": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tier": {
+          "enum": [
+            "open",
+            "research-nc",
+            "external-review",
+            "bundled"
+          ]
+        },
+        "redistribution": {
+          "enum": [
+            "allowed",
+            "conditional",
+            "metadata-only",
+            "prohibited",
+            "unclear"
+          ]
+        },
+        "requires_acceptance": {
+          "type": "boolean"
+        },
+        "uri": {
+          "type": "string",
+          "minLength": 1
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "citation": {
+      "type": "object",
+      "required": [
+        "key",
+        "text"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "doi": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bibtex": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "discovery": {
+      "type": "object",
+      "required": [
+        "annotation_globs",
+        "image_roots"
+      ],
+      "properties": {
+        "annotation_globs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "image_roots": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "exclude_globs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "split_from_path": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "split": {
+      "type": "object",
+      "required": [
+        "strategy",
+        "group_fields"
+      ],
+      "properties": {
+        "strategy": {
+          "enum": [
+            "hash_group",
+            "upstream",
+            "fixed",
+            "none"
+          ]
+        },
+        "group_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "ratios": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "train",
+              "dev",
+              "test",
+              "diagnostic"
+            ]
+          },
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "upstream_map": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "script_style",
+        "era",
+        "document_type",
+        "layout_type",
+        "vocalization",
+        "source_type"
+      ],
+      "properties": {
+        "script_style": {
+          "type": "string",
+          "minLength": 1
+        },
+        "era": {
+          "type": "string",
+          "minLength": 1
+        },
+        "document_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "layout_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "vocalization": {
+          "enum": [
+            "none",
+            "partial",
+            "full",
+            "mixed"
+          ]
+        },
+        "source_type": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "title",
+        "version",
+        "task",
+        "track",
+        "languages",
+        "script",
+        "status",
+        "converter",
+        "homepage",
+        "citation",
+        "license",
+        "artifacts",
+        "discovery",
+        "split",
+        "metadata"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task": {
+          "type": "string",
+          "minLength": 1
+        },
+        "track": {
+          "type": "string",
+          "minLength": 1
+        },
+        "languages": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 2
+          }
+        },
+        "script": {
+          "type": "string",
+          "minLength": 4
+        },
+        "status": {
+          "enum": [
+            "core",
+            "supplementary",
+            "external-review",
+            "diagnostic"
+          ]
+        },
+        "converter": {
+          "enum": [
+            "pagexml",
+            "alto",
+            "character-folders",
+            "transkribus-export",
+            "none"
+          ]
+        },
+        "homepage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "citation": {
+          "$ref": "#/$defs/citation"
+        },
+        "license": {
+          "$ref": "#/$defs/license"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "discovery": {
+          "$ref": "#/$defs/discovery"
+        },
+        "split": {
+          "$ref": "#/$defs/split"
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

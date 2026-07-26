@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<alto xmlns="http://www.loc.gov/standards/alto/ns-v4#">
+  <Description>
+    <sourceImageInformation><fileName>alto-page.png</fileName></sourceImageInformation>
+  </Description>
+  <Layout>
+    <Page ID="p1" WIDTH="1000" HEIGHT="600" PHYSICAL_IMG_NR="1">
+      <PrintSpace HPOS="0" VPOS="0" WIDTH="1000" HEIGHT="600">
+        <TextBlock ID="b1" HPOS="500" VPOS="50" WIDTH="450" HEIGHT="450" BASEDIRECTION="RTL" LANG="he">
+          <TextLine ID="a1" HPOS="520" VPOS="80" WIDTH="410" HEIGHT="70" BASEDIRECTION="RTL">
+            <String ID="s1" CONTENT="בשנת" HPOS="850" VPOS="80" WIDTH="80" HEIGHT="60"/>
+            <SP WIDTH="20"/>
+            <String ID="s2" CONTENT="2026" HPOS="740" VPOS="80" WIDTH="90" HEIGHT="60"/>
+            <SP WIDTH="20"/>
+            <String ID="s3" CONTENT="OCR-v2.1" HPOS="550" VPOS="80" WIDTH="170" HEIGHT="60"/>
+          </TextLine>
+          <TextLine ID="a2" HPOS="520" VPOS="180" WIDTH="410" HEIGHT="70" BASEDIRECTION="RTL">
+            <String ID="s4" HPOS="800" VPOS="180" WIDTH="130" HEIGHT="60">
+              <Glyph CONTENT="ש"/><Glyph CONTENT="ל"/><Glyph CONTENT="ו"/><Glyph CONTENT="ם"/>
+            </String>
+            <SP WIDTH="20"/>
+            <HYP CONTENT="־"/>
+            <SP WIDTH="20"/>
+            <String ID="s5" CONTENT="עולם" HPOS="620" VPOS="180" WIDTH="130" HEIGHT="60"/>
+          </TextLine>
+        </TextBlock>
+        <TextBlock ID="b2" HPOS="50" VPOS="50" WIDTH="350" HEIGHT="450" BASEDIRECTION="LTR" LANG="en">
+          <Shape><Polygon POINTS="50,50 400,50 400,500 50,500"/></Shape>
+          <TextLine ID="a3" HPOS="70" VPOS="80" WIDTH="300" HEIGHT="70">
+            <String CONTENT="Appendix" HPOS="70" VPOS="80" WIDTH="160" HEIGHT="60"/>
+          </TextLine>
+        </TextBlock>
+      </PrintSpace>
+    </Page>
+  </Layout>
+  <ReadingOrder>
+    <OrderedGroup ID="order">
+      <RegionRefIndexed INDEX="0" REGIONREF="b1"/>
+      <RegionRefIndexed INDEX="1" REGIONREF="b2"/>
+    </OrderedGroup>
+  </ReadingOrder>
+</alto>

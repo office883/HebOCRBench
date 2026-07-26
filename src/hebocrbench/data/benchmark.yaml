@@ -1,0 +1,34 @@
+schema_version: "1.0"
+
+# Unit matching. Shared IDs are appropriate for recognition-only tracks whose
+# line/region IDs are published. Set false for blind end-to-end layout tracks.
+matching:
+  use_shared_ids: false
+  line_iou_threshold: 0.30
+  region_iou_threshold: 0.50
+
+conformance:
+  diagnostic_track: bidi_diagnostic
+  min_exact_line_rate: 0.95
+  min_ltr_run_exact_rate: 0.98
+  min_numeric_exact_rate: 0.99
+  min_bracket_exact_rate: 0.99
+  max_visual_order_failure_count: 0
+  max_bidi_control_count: 0
+  max_unbalanced_bidi_controls: 0
+
+statistics:
+  # Publication default. Override to 0 only for local smoke tests.
+  bootstrap_samples: 1000
+  confidence: 0.95
+  seed: 20260723
+  worst_page_count: 20
+  worst_slice_min_pages: 5
+
+slice_fields:
+  - track
+  - metadata.vocalization
+  - metadata.document_type
+  - metadata.layout_type
+  - metadata.script_style
+  - metadata.source_type
