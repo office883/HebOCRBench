@@ -1,0 +1,22 @@
+diff --git a/tests/test_tesseract_adapter.py b/tests/test_tesseract_adapter.py
+index 37481e13b149918a96fa6100ac003f66efb3e3b8..d1ed3c31175a2a499ec660acda6ae0ce7e395db3 100644
+--- a/tests/test_tesseract_adapter.py
++++ b/tests/test_tesseract_adapter.py
+@@ -40,10 +40,11 @@ def test_oracle_layout_custom_lambda_is_not_mistaken_for_default(tmp_path, monke
+     monkeypatch.setattr(
+         "hebocrbench.adapters.tesseract.tesseract_version", unexpected_version_probe
+     )
+-    predictions = run_tesseract_oracle_layout(
+-        gold,
+-        dataset_root=dataset.root,
+-        recognizer=lambda image, language, psm: "פלט מותאם",
++    assert (
++        run_tesseract_oracle_layout(
++            gold,
++            dataset_root=dataset.root,
++            recognizer=lambda image, language, psm: "פלט מותאם",
++        )[0]["model"]["version"]
++        == "custom"
+     )
+-
+-    assert predictions[0]["model"]["version"] == "custom"
