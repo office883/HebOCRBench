@@ -27,6 +27,10 @@ on:
         description: Minimum selected pages containing Hebrew with Latin or numbers
         required: true
         default: '100'
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/modern-public-corpus.yml
 
 permissions:
   contents: read
@@ -39,6 +43,13 @@ jobs:
   materialize:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
+    env:
+      TARGET_DOCUMENTS: ${{ inputs.target_documents || '100' }}
+      TARGET_PAGES: ${{ inputs.target_pages || '500' }}
+      MAXIMUM_RECORDS_PER_ENTITY: ${{ inputs.maximum_records_per_entity || '12000' }}
+      MINIMUM_TABLE_PAGES: ${{ inputs.minimum_table_pages || '50' }}
+      MINIMUM_FORM_PAGES: ${{ inputs.minimum_form_pages || '20' }}
+      MINIMUM_MIXED_BIDI_PAGES: ${{ inputs.minimum_mixed_bidi_pages || '100' }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -62,12 +73,12 @@ jobs:
           set -euo pipefail
           python scripts/build_modern_public_corpus.py \
             --output "$RUNNER_TEMP/modern-public-documents-v1" \
-            --target-documents '${{ inputs.target_documents }}' \
-            --target-pages '${{ inputs.target_pages }}' \
-            --maximum-records-per-entity '${{ inputs.maximum_records_per_entity }}' \
-            --minimum-table-pages '${{ inputs.minimum_table_pages }}' \
-            --minimum-form-pages '${{ inputs.minimum_form_pages }}' \
-            --minimum-mixed-bidi-pages '${{ inputs.minimum_mixed_bidi_pages }}' \
+            --target-documents "$TARGET_DOCUMENTS" \
+            --target-pages "$TARGET_PAGES" \
+            --maximum-records-per-entity "$MAXIMUM_RECORDS_PER_ENTITY" \
+            --minimum-table-pages "$MINIMUM_TABLE_PAGES" \
+            --minimum-form-pages "$MINIMUM_FORM_PAGES" \
+            --minimum-mixed-bidi-pages "$MINIMUM_MIXED_BIDI_PAGES" \
             --overwrite
 
       - name: Verify source snapshot evidence
@@ -78,7 +89,7 @@ jobs:
           test -s "$root/.hebocrbench-source.json"
           test -s "$root/SOURCE_INVENTORY.json"
           test -s "$root/SOURCE_EVIDENCE.json"
-          python - "$root" '${{ inputs.target_documents }}' '${{ inputs.target_pages }}' '${{ inputs.minimum_table_pages }}' '${{ inputs.minimum_form_pages }}' '${{ inputs.minimum_mixed_bidi_pages }}' <<'PY'
+          python - "$root" "$TARGET_DOCUMENTS" "$TARGET_PAGES" "$MINIMUM_TABLE_PAGES" "$MINIMUM_FORM_PAGES" "$MINIMUM_MIXED_BIDI_PAGES" <<'PY'
           import hashlib, json, sys
           from pathlib import Path
           root = Path(sys.argv[1])
