@@ -90,7 +90,7 @@ index 0000000..7ff28d5
 +def _select_backend(importer: Callable[[str], ModuleType] = import_module) -> ModuleType:
 +    """Return stdlib ``tomllib`` or the ``tomli`` backport on Python 3.10.
 +
-+    Only a genuinely missing ``tomllib`` module triggers the fallback.  Import
++    Only a genuinely missing ``tomllib`` module triggers the fallback. Import
 +    failures raised from inside a backend remain visible rather than being
 +    misreported as a missing standard-library module.
 +    """
@@ -222,3 +222,56 @@ index 0000000..c5303db
 +
 +    with pytest.raises(ModuleNotFoundError, match="other_dependency"):
 +        _select_backend(importer)
+diff --git a/src/hebocrbench/adapters/tesseract.py b/src/hebocrbench/adapters/tesseract.py
+index 7ba11a6ed4d20a1f697b9b1ad0b98e58b4c94bf6..60417d2e2757354033c1a93dbf00859ed578e1ee 100644
+--- a/src/hebocrbench/adapters/tesseract.py
++++ b/src/hebocrbench/adapters/tesseract.py
+@@ -104,12 +104,15 @@ def run_tesseract_oracle_layout(
+     """Recognize every gold line crop and return prediction-schema records."""
+ 
+     root = Path(dataset_root)
++    use_default_recognizer = recognizer is None
+     if recognizer is None:
+-        recognizer = lambda image, language, mode: recognize_with_tesseract(
+-            image, language, mode, executable=executable
+-        )
++
++        def default_recognizer(image: Image.Image, language: str, mode: int) -> str:
++            return recognize_with_tesseract(image, language, mode, executable=executable)
++
++        recognizer = default_recognizer
+     predictions: list[dict[str, Any]] = []
+-    version = tesseract_version(executable) if recognizer.__name__ == "<lambda>" else "custom"
++    version = tesseract_version(executable) if use_default_recognizer else "custom"
+     for page in gold_pages:
+         image_meta = page.get("image", {})
+         rotation = int(image_meta.get("rotation_degrees", 0))
+diff --git a/tests/test_tesseract_adapter.py b/tests/test_tesseract_adapter.py
+index f666cebcf7c7941456de91053ae4711dca7dc25d..37481e13b149918a96fa6100ac003f66efb3e3b8 100644
+--- a/tests/test_tesseract_adapter.py
++++ b/tests/test_tesseract_adapter.py
+@@ -27,3 +27,23 @@ def test_oracle_layout_adapter_uses_images_but_not_gold_text(tmp_path):
+     assert predictions[0]["tables"] == []
+     assert predictions[0]["form_fields"] == []
+     assert predictions[0]["model"]["adapter"] == "tesseract_oracle_layout"
++
++
++def test_oracle_layout_custom_lambda_is_not_mistaken_for_default(tmp_path, monkeypatch):
++    dataset = generate_stress_suite(
++        tmp_path / "dataset", variants=("clean",), limit=1, include_structured=False
++    )
++    gold = load_jsonl(dataset.gold_path)
++
++    def unexpected_version_probe(executable):
++        raise AssertionError(f"custom recognizer must not probe {executable}")
++
++    monkeypatch.setattr(
++        "hebocrbench.adapters.tesseract.tesseract_version", unexpected_version_probe
++    )
++    predictions = run_tesseract_oracle_layout(
++        gold,
++        dataset_root=dataset.root,
++        recognizer=lambda image, language, psm: "פלט מותאם",
++    )
++
++    assert predictions[0]["model"]["version"] == "custom"
