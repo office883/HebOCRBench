@@ -85,9 +85,30 @@ jobs:
 
       - name: Lint and format check
         if: matrix.python-version == '3.13'
+        shell: bash
         run: |
-          python -m ruff check .
-          python -m ruff format --check .
+          set +e
+          python -m ruff check . 2>&1 | tee /tmp/ruff-check.txt
+          lint_status=${PIPESTATUS[0]}
+          python -m ruff format --check . 2>&1 | tee /tmp/ruff-format.txt
+          format_status=${PIPESTATUS[0]}
+          printf 'lint_status=%s\nformat_status=%s\n' \
+            "$lint_status" "$format_status" | tee /tmp/ruff-status.txt
+          if (( lint_status != 0 || format_status != 0 )); then
+            exit 1
+          fi
+
+      - name: Upload Ruff diagnostics
+        if: always() && matrix.python-version == '3.13'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruff-diagnostics-python-3.13
+          path: |
+            /tmp/ruff-check.txt
+            /tmp/ruff-format.txt
+            /tmp/ruff-status.txt
+          if-no-files-found: warn
+          retention-days: 7
 
   package:
     name: Build and inspect distributions
