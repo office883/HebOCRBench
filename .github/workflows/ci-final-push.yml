@@ -1,0 +1,118 @@
+name: Finalize verified CI repair
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/ci-final-push.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ci-final-push-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/modern-hebrew-sota-v1-20260725
+          fetch-depth: 0
+
+      - name: Freeze the remote branch identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$(git rev-parse HEAD)"
+          echo "BASE_SHA=$base" >> "$GITHUB_ENV"
+          git fetch origin agent/modern-hebrew-sota-v1-20260725
+          test "$(git rev-parse origin/agent/modern-hebrew-sota-v1-20260725)" = "$base"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            fonts-noto-core \
+            poppler-utils \
+            tesseract-ocr \
+            tesseract-ocr-eng \
+            tesseract-ocr-heb
+
+      - name: Reconstruct and apply the exact audited repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch="$RUNNER_TEMP/hebocr-ci-repair.patch"
+          cat tools/ci-clean.b64.part* | base64 --decode > "$patch"
+          printf '%s  %s\n' \
+            '1c4a7329253345f713a5cb165e99b50f4364eb9d0371a152c95951bb1ec59ffc' \
+            "$patch" | sha256sum --check --strict
+          git apply --check "$patch"
+          git apply "$patch"
+          git diff --check
+
+      - name: Verify Python 3.13, Ruff and package contracts
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev,bidi,corpus]'
+          python -m ruff check . --fix --exit-zero
+          python -m ruff format .
+          python -m ruff check .
+          python -m ruff format --check .
+          python -m pytest -q
+          python -m compileall -q src scripts
+          hebocrbench tracks verify
+          hebocrbench sanity --output /tmp/hebocr-sanity-313 --variants clean --limit 28
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+
+      - name: Verify Python 3.10 compatibility
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev,bidi,corpus]'
+          python -m pytest -q
+          python -m compileall -q src scripts
+          hebocrbench tracks verify
+
+      - name: Remove every one-shot transport and diagnostic file
+        shell: bash
+        run: |
+          rm -f \
+            .github/ci-repair-trigger \
+            .github/workflows/ci-repair.yml \
+            .github/workflows/ci-patch-probe.yml \
+            .github/workflows/ci-finalize-probe.yml \
+            .github/workflows/ci-final-push.yml \
+            tools/ci-repair.patch \
+            tools/ci-repair-extra.patch \
+            tools/ci-clean.b64.part*
+
+      - name: Commit and update the branch under a strict lease
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'HebOCRBench CI repair'
+          git config user.email 'actions@users.noreply.github.com'
+          git add --all
+          git diff --cached --check
+          git commit -m 'fix: restore Python 3.10 and Ruff CI'
+          git fetch origin agent/modern-hebrew-sota-v1-20260725
+          remote="$(git rev-parse origin/agent/modern-hebrew-sota-v1-20260725)"
+          test "$remote" = "$BASE_SHA"
+          git push \
+            --force-with-lease=refs/heads/agent/modern-hebrew-sota-v1-20260725:$BASE_SHA \
+            origin HEAD:refs/heads/agent/modern-hebrew-sota-v1-20260725
