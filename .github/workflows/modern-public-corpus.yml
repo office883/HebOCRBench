@@ -1,5 +1,6 @@
 name: Build Modern Hebrew public-document corpus
 
+# Release gate: this workflow must pass on the PR head before merge.
 on:
   workflow_dispatch:
     inputs:
