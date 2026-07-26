@@ -1,0 +1,224 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 6498d86..572fbc9 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -85,9 +85,30 @@ jobs:
+ 
+       - name: Lint and format check
+         if: matrix.python-version == '3.13'
++        shell: bash
+         run: |
+-          python -m ruff check .
+-          python -m ruff format --check .
++          set +e
++          python -m ruff check . 2>&1 | tee /tmp/ruff-check.txt
++          lint_status=${PIPESTATUS[0]}
++          python -m ruff format --check . 2>&1 | tee /tmp/ruff-format.txt
++          format_status=${PIPESTATUS[0]}
++          printf 'lint_status=%s\nformat_status=%s\n' \
++            "$lint_status" "$format_status" | tee /tmp/ruff-status.txt
++          if (( lint_status != 0 || format_status != 0 )); then
++            exit 1
++          fi
++
++      - name: Upload Ruff diagnostics
++        if: always() && matrix.python-version == '3.13'
++        uses: actions/upload-artifact@v4
++        with:
++          name: ruff-diagnostics-python-3.13
++          path: |
++            /tmp/ruff-check.txt
++            /tmp/ruff-format.txt
++            /tmp/ruff-status.txt
++          if-no-files-found: warn
++          retention-days: 7
+ 
+   package:
+     name: Build and inspect distributions
+diff --git a/pyproject.toml b/pyproject.toml
+index 9c37fc0..584998c 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -20,6 +20,7 @@ dependencies = [
+   "referencing>=0.35,<1",
+   "scipy>=1.12,<2",
+   "shapely>=2,<3",
++  "tomli>=2,<3; python_version < '3.11'",
+ ]
+ 
+ [project.optional-dependencies]
+@@ -30,7 +31,7 @@ corpus = [
+ dev = [
+   "pytest>=8.3,<10",
+   "pytest-cov>=6,<8",
+-  "ruff>=0.11,<1",
++  "ruff==0.15.22",
+ ]
+ 
+ [project.scripts]
+diff --git a/scripts/verify_v1_release.py b/scripts/verify_v1_release.py
+index 5f4dd09..a9142c9 100755
+--- a/scripts/verify_v1_release.py
++++ b/scripts/verify_v1_release.py
+@@ -17,7 +17,10 @@ import subprocess
+ import sys
+ import tarfile
+ import tempfile
+-import tomllib
++try:
++    import tomllib
++except ModuleNotFoundError:  # Python 3.10
++    import tomli as tomllib
+ from typing import Mapping, Sequence
+ import zipfile
+ 
+diff --git a/src/hebocrbench/_toml.py b/src/hebocrbench/_toml.py
+new file mode 100644
+index 0000000..7ff28d5
+--- /dev/null
++++ b/src/hebocrbench/_toml.py
+@@ -0,0 +1,31 @@
++"""TOML parser compatibility for the supported Python 3.10+ runtime range."""
++
++from __future__ import annotations
++
++from importlib import import_module
++from types import ModuleType
++from typing import Callable
++
++
++def _select_backend(importer: Callable[[str], ModuleType] = import_module) -> ModuleType:
++    """Return stdlib ``tomllib`` or the ``tomli`` backport on Python 3.10.
++
++    Only a genuinely missing ``tomllib`` module triggers the fallback.  Import
++    failures raised from inside a backend remain visible rather than being
++    misreported as a missing standard-library module.
++    """
++
++    try:
++        return importer("tomllib")
++    except ModuleNotFoundError as exc:
++        if exc.name != "tomllib":
++            raise
++        return importer("tomli")
++
++
++_BACKEND = _select_backend()
++TOMLDecodeError = _BACKEND.TOMLDecodeError
++load = _BACKEND.load
++loads = _BACKEND.loads
++
++__all__ = ["TOMLDecodeError", "load", "loads"]
+diff --git a/src/hebocrbench/release_packaging.py b/src/hebocrbench/release_packaging.py
+index d7e0782..839e01e 100644
+--- a/src/hebocrbench/release_packaging.py
++++ b/src/hebocrbench/release_packaging.py
+@@ -20,8 +20,9 @@ import platform
+ import re
+ import sys
+ import tarfile
+-import tomllib
+ from typing import Iterable, Mapping
++
++from ._toml import TOMLDecodeError, loads as toml_loads
+ import zipfile
+ 
+ 
+@@ -53,9 +54,9 @@ class ReleasePackagingError(ValueError):
+ 
+ def _project(project_root: Path) -> Mapping[str, object]:
+     try:
+-        payload = tomllib.loads((project_root / "pyproject.toml").read_text(encoding="utf-8"))
++        payload = toml_loads((project_root / "pyproject.toml").read_text(encoding="utf-8"))
+         project = payload["project"]
+-    except (OSError, KeyError, tomllib.TOMLDecodeError) as exc:
++    except (OSError, KeyError, TOMLDecodeError) as exc:
+         raise ReleasePackagingError(f"Cannot load project metadata: {exc}") from exc
+     if not isinstance(project, Mapping):
+         raise ReleasePackagingError("[project] must be a mapping")
+diff --git a/tests/test_packaging_metadata.py b/tests/test_packaging_metadata.py
+index b69632e..918d00a 100644
+--- a/tests/test_packaging_metadata.py
++++ b/tests/test_packaging_metadata.py
+@@ -2,17 +2,16 @@ from __future__ import annotations
+ 
+ from importlib import resources
+ from pathlib import Path
+-import tomllib
+-
+ from hebocrbench import __version__
+ from hebocrbench.corpus_registry import load_registry
++from hebocrbench._toml import loads as toml_loads
+ 
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+ 
+ 
+ def test_release_version_is_1_0_0_everywhere():
+-    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
++    project = toml_loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+ 
+     assert project["version"] == "1.0.0"
+     assert __version__ == "1.0.0"
+@@ -58,7 +57,7 @@ def test_registry_lock_matches_authoritative_registry():
+ 
+ 
+ def test_package_data_includes_registry_lock_and_default_config():
+-    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
++    project = toml_loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+     patterns = set(project["tool"]["setuptools"]["package-data"]["hebocrbench"])
+ 
+     assert "data/*.yaml" in patterns
+@@ -117,7 +116,7 @@ def test_modern_release_tree_contains_no_historical_source_materializers():
+ 
+ 
+ def test_base_runtime_declares_modern_pdf_dependency():
+-    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
++    project = toml_loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+     dependencies = set(project["dependencies"])
+ 
+     assert any(item.startswith("PyMuPDF>=") for item in dependencies)
+diff --git a/tests/test_toml_compat.py b/tests/test_toml_compat.py
+new file mode 100644
+index 0000000..c5303db
+--- /dev/null
++++ b/tests/test_toml_compat.py
+@@ -0,0 +1,38 @@
++from __future__ import annotations
++
++from types import SimpleNamespace
++
++import pytest
++
++from hebocrbench._toml import _select_backend, loads
++
++
++def test_toml_compat_loads_project_metadata():
++    assert loads('[project]\nname = "hebocrbench"\n')["project"]["name"] == "hebocrbench"
++
++
++def test_toml_compat_falls_back_only_when_tomllib_is_missing():
++    calls: list[str] = []
++    fallback = SimpleNamespace(loads=lambda text: {"fallback": text})
++
++    def importer(name: str):
++        calls.append(name)
++        if name == "tomllib":
++            error = ModuleNotFoundError("No module named 'tomllib'")
++            error.name = "tomllib"
++            raise error
++        assert name == "tomli"
++        return fallback
++
++    assert _select_backend(importer) is fallback
++    assert calls == ["tomllib", "tomli"]
++
++
++def test_toml_compat_does_not_hide_nested_import_failures():
++    def importer(name: str):
++        error = ModuleNotFoundError("No module named 'other_dependency'")
++        error.name = "other_dependency"
++        raise error
++
++    with pytest.raises(ModuleNotFoundError, match="other_dependency"):
++        _select_backend(importer)
