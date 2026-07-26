@@ -1,0 +1,138 @@
+name: Repair Python 3.10 and Ruff CI
+
+on:
+  push:
+    branches:
+      - agent/modern-hebrew-sota-v1-20260725
+    paths:
+      - tools/ci-repair.patch
+      - .github/workflows/ci-repair.yml
+      - .github/ci-repair-trigger
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ci-repair-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out the PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/modern-hebrew-sota-v1-20260725
+          fetch-depth: 0
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            fonts-noto-core \
+            poppler-utils \
+            tesseract-ocr \
+            tesseract-ocr-eng \
+            tesseract-ocr-heb
+
+      - name: Verify and apply the compatibility patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' \
+            '1fec8a39b5be97bf75c8e3336bf396b5c4521c7688c3e6fb8a02f5e41967cce8' \
+            'tools/ci-repair.patch' | sha256sum --check --strict
+          git apply --check tools/ci-repair.patch
+          git apply tools/ci-repair.patch
+
+      - name: Install package and development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev,bidi,corpus]'
+
+      - name: Apply deterministic Ruff fixes and formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m ruff check . --fix --exit-zero
+          python -m ruff format .
+
+      - name: Record strict Ruff results
+        shell: bash
+        run: |
+          set +e
+          python -m ruff check . 2>&1 | tee /tmp/repair-ruff-check.txt
+          lint_status=${PIPESTATUS[0]}
+          python -m ruff format --check . 2>&1 | tee /tmp/repair-ruff-format.txt
+          format_status=${PIPESTATUS[0]}
+          printf 'lint_status=%s\nformat_status=%s\n' \
+            "$lint_status" "$format_status" | tee /tmp/repair-ruff-status.txt
+          exit 0
+
+      - name: Upload Ruff repair diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-repair-ruff-diagnostics
+          path: |
+            /tmp/repair-ruff-check.txt
+            /tmp/repair-ruff-format.txt
+            /tmp/repair-ruff-status.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Require clean Ruff results
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -qx 'lint_status=0' /tmp/repair-ruff-status.txt
+          grep -qx 'format_status=0' /tmp/repair-ruff-status.txt
+
+      - name: Verify on Python 3.13
+        run: |
+          python -m pytest -q
+          python -m compileall -q src scripts
+          hebocrbench tracks verify
+          hebocrbench sanity --output /tmp/hebocr-sanity-313 --variants clean --limit 28
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+
+      - name: Verify on Python 3.10
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev,bidi,corpus]'
+          python -m pytest -q
+          python -m compileall -q src scripts
+          hebocrbench tracks verify
+
+      - name: Remove one-shot repair transport
+        shell: bash
+        run: |
+          rm -f \
+            .github/ci-repair-trigger \
+            .github/workflows/ci-repair.yml \
+            tools/ci-repair.patch
+
+      - name: Commit and push the verified repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'HebOCRBench CI repair'
+          git config user.email 'actions@users.noreply.github.com'
+          git add --all
+          git diff --cached --check
+          git commit -m 'fix: restore Python 3.10 and Ruff CI'
+          git push origin HEAD:agent/modern-hebrew-sota-v1-20260725
