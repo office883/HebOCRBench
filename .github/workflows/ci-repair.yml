@@ -6,6 +6,7 @@ on:
       - agent/modern-hebrew-sota-v1-20260725
     paths:
       - tools/ci-repair.patch
+      - tools/ci-repair-extra.patch
       - .github/workflows/ci-repair.yml
       - .github/ci-repair-trigger
   pull_request:
@@ -13,6 +14,7 @@ on:
       - main
     paths:
       - tools/ci-repair.patch
+      - tools/ci-repair-extra.patch
       - .github/workflows/ci-repair.yml
       - .github/ci-repair-trigger
   workflow_dispatch:
@@ -52,14 +54,18 @@ jobs:
             tesseract-ocr-eng \
             tesseract-ocr-heb
 
-      - name: Verify and apply the compatibility patch
+      - name: Verify and apply the compatibility patches
         shell: bash
         run: |
           set -euo pipefail
-          actual="$(git hash-object tools/ci-repair.patch)"
-          test "$actual" = '49b8dc7281b6c1adfbd808dce1b67199e3a7d3d3'
+          test "$(git hash-object tools/ci-repair.patch)" = \
+            '49b8dc7281b6c1adfbd808dce1b67199e3a7d3d3'
+          test "$(git hash-object tools/ci-repair-extra.patch)" = \
+            'f0b943ba20b6d940e464d5c932b4675b78ab9e9c'
           git apply --check tools/ci-repair.patch
           git apply tools/ci-repair.patch
+          git apply --check tools/ci-repair-extra.patch
+          git apply tools/ci-repair-extra.patch
 
       - name: Install package and development dependencies
         run: |
@@ -131,7 +137,8 @@ jobs:
           rm -f \
             .github/ci-repair-trigger \
             .github/workflows/ci-repair.yml \
-            tools/ci-repair.patch
+            tools/ci-repair.patch \
+            tools/ci-repair-extra.patch
 
       - name: Commit and push the verified repair
         shell: bash
