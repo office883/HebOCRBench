@@ -1,8 +1,9 @@
-name: Finalize verified CI repair
+name: Finalize verified source repair
 
 on:
-  pull_request:
-    branches: [main]
+  push:
+    branches:
+      - agent/modern-hebrew-sota-v1-20260725
     paths:
       - .github/workflows/ci-final-push.yml
   workflow_dispatch:
@@ -11,16 +12,16 @@ permissions:
   contents: write
 
 concurrency:
-  group: ci-final-push-${{ github.repository }}
-  cancel-in-progress: false
+  group: ci-final-source-push-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   finalize:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out the exact PR branch
+        uses: actions/checkout@v4
         with:
           ref: agent/modern-hebrew-sota-v1-20260725
           fetch-depth: 0
@@ -59,7 +60,7 @@ jobs:
             '1c4a7329253345f713a5cb165e99b50f4364eb9d0371a152c95951bb1ec59ffc' \
             "$patch" | sha256sum --check --strict
           git apply --check "$patch"
-          git apply "$patch"
+          git apply --whitespace=fix "$patch"
           git diff --check
 
       - name: Verify Python 3.13, Ruff and package contracts
@@ -88,20 +89,22 @@ jobs:
           python -m compileall -q src scripts
           hebocrbench tracks verify
 
-      - name: Remove every one-shot transport and diagnostic file
+      - name: Prepare a source-only commit allowed for GITHUB_TOKEN
         shell: bash
         run: |
+          set -euo pipefail
+          # GitHub's workflow token cannot create/update workflow files. Keep
+          # those paths unchanged in this commit; the GitHub App removes them
+          # and installs the final CI definition after the verified source push.
+          git restore --source=HEAD --worktree --staged .github/workflows
           rm -f \
             .github/ci-repair-trigger \
-            .github/workflows/ci-repair.yml \
-            .github/workflows/ci-patch-probe.yml \
-            .github/workflows/ci-finalize-probe.yml \
-            .github/workflows/ci-final-push.yml \
             tools/ci-repair.patch \
             tools/ci-repair-extra.patch \
             tools/ci-clean.b64.part*
+          git diff --check
 
-      - name: Commit and update the branch under a strict lease
+      - name: Commit and update the source under a strict lease
         shell: bash
         run: |
           set -euo pipefail
@@ -109,7 +112,7 @@ jobs:
           git config user.email 'actions@users.noreply.github.com'
           git add --all
           git diff --cached --check
-          git commit -m 'fix: restore Python 3.10 and Ruff CI'
+          git commit -m 'fix: restore Python 3.10 compatibility and Ruff formatting'
           git fetch origin agent/modern-hebrew-sota-v1-20260725
           remote="$(git rev-parse origin/agent/modern-hebrew-sota-v1-20260725)"
           test "$remote" = "$BASE_SHA"
