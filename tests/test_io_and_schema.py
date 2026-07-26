@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 
 from hebocrbench.io import DuplicatePageIdError, index_by_page_id, load_jsonl, write_jsonl

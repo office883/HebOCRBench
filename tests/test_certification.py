@@ -109,10 +109,14 @@ def _source_tree(tmp_path: Path, artifact: Path, *, verified: bool = True) -> Pa
     return root
 
 
-def _build(tmp_path: Path, *, verified: bool = True, research_nc: bool = False, profile: str = "open"):
+def _build(
+    tmp_path: Path, *, verified: bool = True, research_nc: bool = False, profile: str = "open"
+):
     artifact = tmp_path / "official.bin"
     artifact.write_bytes(b"official immutable corpus artifact")
-    registry = load_registry(_registry(tmp_path / "registry.yaml", artifact, research_nc=research_nc))
+    registry = load_registry(
+        _registry(tmp_path / "registry.yaml", artifact, research_nc=research_nc)
+    )
     source = _source_tree(tmp_path, artifact, verified=verified)
     build = tmp_path / "build"
     build_corpus(
@@ -193,24 +197,28 @@ def test_release_certify_cli_emits_machine_readable_success(capsys, tmp_path):
     build, registry = _build(tmp_path)
     registry_path = tmp_path / "registry.yaml"
 
-    assert main(
-        [
-            "release",
-            "certify",
-            "--build-root",
-            str(build),
-            "--registry",
-            str(registry_path),
-            "--expected-version",
-            "1.0.0",
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "release",
+                "certify",
+                "--build-root",
+                str(build),
+                "--registry",
+                str(registry_path),
+                "--expected-version",
+                "1.0.0",
+            ]
+        )
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
     assert payload["certified"] is True
     assert payload["checks"]["source_provenance"] is True
-    assert payload["dataset_fingerprint"] == json.loads(
-        (build / "CERTIFIED.json").read_text(encoding="utf-8")
-    )["dataset_fingerprint"]
+    assert (
+        payload["dataset_fingerprint"]
+        == json.loads((build / "CERTIFIED.json").read_text(encoding="utf-8"))["dataset_fingerprint"]
+    )
 
 
 def test_certification_enforces_exact_official_profile_membership(tmp_path):
@@ -238,7 +246,9 @@ def test_certification_enforces_exact_official_profile_membership(tmp_path):
     )
     profiles = load_profiles(profiles_path, registry=registry)
 
-    assert certify_release(build, registry, expected_version="1.0.0", profiles=profiles).is_certified
+    assert certify_release(
+        build, registry, expected_version="1.0.0", profiles=profiles
+    ).is_certified
 
     manifest_path = build / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))

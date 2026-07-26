@@ -64,7 +64,7 @@ def test_alto_converter_accepts_flat_points_and_flat_baseline(tmp_path):
     Image.new("RGB", (200, 120), "white").save(image_path)
     annotation = tmp_path / "flat.xml"
     annotation.write_text(
-        '''<?xml version="1.0" encoding="UTF-8"?>
+        """<?xml version="1.0" encoding="UTF-8"?>
 <alto xmlns="http://www.loc.gov/standards/alto/ns-v4#">
   <Description><sourceImageInformation><fileName>flat.jpg</fileName></sourceImageInformation></Description>
   <Layout><Page WIDTH="200" HEIGHT="120"><PrintSpace>
@@ -77,7 +77,7 @@ def test_alto_converter_accepts_flat_points_and_flat_baseline(tmp_path):
       </TextLine>
     </TextBlock>
   </PrintSpace></Page></Layout>
-</alto>''',
+</alto>""",
         encoding="utf-8",
     )
 
@@ -93,7 +93,7 @@ def test_alto_converter_records_rectangle_fallback_for_degenerate_source_polygon
     Image.new("RGB", (200, 120), "white").save(tmp_path / "fallback.jpg")
     annotation = tmp_path / "fallback.xml"
     annotation.write_text(
-        '''<?xml version="1.0" encoding="UTF-8"?>
+        """<?xml version="1.0" encoding="UTF-8"?>
 <alto xmlns="http://www.loc.gov/standards/alto/ns-v4#">
   <Description><sourceImageInformation><fileName>fallback.jpg</fileName></sourceImageInformation></Description>
   <Layout><Page WIDTH="200" HEIGHT="120"><PrintSpace>
@@ -104,7 +104,7 @@ def test_alto_converter_records_rectangle_fallback_for_degenerate_source_polygon
       </TextLine>
     </TextBlock>
   </PrintSpace></Page></Layout>
-</alto>''',
+</alto>""",
         encoding="utf-8",
     )
 

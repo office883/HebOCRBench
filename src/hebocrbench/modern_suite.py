@@ -71,8 +71,7 @@ class ModernSuiteSpec:
             "profile_fingerprint": self.profile_fingerprint,
             "registry_fingerprint": self.registry_fingerprint,
             "tracks": {
-                track_id: track.to_dict()
-                for track_id, track in sorted(self.tracks.items())
+                track_id: track.to_dict() for track_id, track in sorted(self.tracks.items())
             },
             "suite_fingerprint": self.suite_fingerprint,
         }
@@ -170,8 +169,6 @@ def parse_modern_suite_lock(value: object) -> ModernSuiteSpec:
     )
 
 
-
-
 def _read_json_object(path: Path, label: str) -> Mapping[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -249,9 +246,7 @@ def build_modern_suite_lock(
             raise ModernSuiteError(f"{track_id}.FROZEN.json has a stale manifest_sha256")
         actual_certification_sha256 = sha256_file(certification_path)
         if certified.get("certification_sha256") != actual_certification_sha256:
-            raise ModernSuiteError(
-                f"{track_id}.CERTIFIED.json certification_sha256 is stale"
-            )
+            raise ModernSuiteError(f"{track_id}.CERTIFIED.json certification_sha256 is stale")
         track_maturity = maturity_map.get(
             track_id, "certified" if track_id in headline_tracks else "diagnostic"
         )
@@ -316,13 +311,9 @@ def validate_modern_suite_contract(
     if suite.benchmark != "HebOCRBench Modern Hebrew":
         raise ModernSuiteError("suite benchmark identity is not HebOCRBench Modern Hebrew")
     if suite.benchmark_version != expected_benchmark_version:
-        raise ModernSuiteError(
-            "suite benchmark_version differs from the release benchmark version"
-        )
+        raise ModernSuiteError("suite benchmark_version differs from the release benchmark version")
     if suite.registry_fingerprint != expected_registry_fingerprint:
-        raise ModernSuiteError(
-            "suite registry_fingerprint differs from the canonical registry"
-        )
+        raise ModernSuiteError("suite registry_fingerprint differs from the canonical registry")
     if suite.profile_id != expected_profile_id:
         raise ModernSuiteError("suite profile_id differs from the requested profile")
     if suite.profile_fingerprint != expected_profile_fingerprint:
@@ -332,9 +323,7 @@ def validate_modern_suite_contract(
     if allowed_track_ids is not None:
         unknown = sorted(set(suite.tracks) - set(allowed_track_ids))
         if unknown:
-            raise ModernSuiteError(
-                "suite contains non-official track IDs: " + ", ".join(unknown)
-            )
+            raise ModernSuiteError("suite contains non-official track IDs: " + ", ".join(unknown))
     headline = {track_id for track_id, track in suite.tracks.items() if track.headline}
     expected_headline = set(required_headline_tracks)
     if headline != expected_headline:
@@ -361,7 +350,9 @@ def suite_evidence_for_track(
 ) -> dict[str, object]:
     track = suite.tracks.get(track_id)
     if track is None:
-        raise ModernSuiteError(f"track {track_id!r} is not present in suite {suite.suite_fingerprint}")
+        raise ModernSuiteError(
+            f"track {track_id!r} is not present in suite {suite.suite_fingerprint}"
+        )
     source = Path(gold_path)
     if not source.is_file():
         raise ModernSuiteError(f"gold file is missing: {source}")

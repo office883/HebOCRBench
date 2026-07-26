@@ -169,7 +169,9 @@ def test_fetch_source_clones_git_artifact_at_locked_revision(tmp_path):
     upstream = tmp_path / "upstream-repo"
     upstream.mkdir()
     subprocess.run(["git", "init", "-q", str(upstream)], check=True)
-    subprocess.run(["git", "-C", str(upstream), "config", "user.email", "fixture@example.invalid"], check=True)
+    subprocess.run(
+        ["git", "-C", str(upstream), "config", "user.email", "fixture@example.invalid"], check=True
+    )
     subprocess.run(["git", "-C", str(upstream), "config", "user.name", "Fixture"], check=True)
     (upstream / "page.txt").write_text("שלום 2026\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(upstream), "add", "page.txt"], check=True)
@@ -191,9 +193,12 @@ def test_fetch_source_clones_git_artifact_at_locked_revision(tmp_path):
 
     assert first.downloaded_count == 1
     assert (checkout / "page.txt").read_text(encoding="utf-8") == "שלום 2026\n"
-    assert subprocess.check_output(
-        ["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True
-    ).strip() == revision
+    assert (
+        subprocess.check_output(
+            ["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True
+        ).strip()
+        == revision
+    )
 
     second = fetch_source(_source(artifact), tmp_path / "cache", accepted_source_ids=set())
     assert second.cache_hit_count == 1
@@ -207,9 +212,11 @@ def test_fetch_source_writes_reproducible_verification_manifest(tmp_path):
 
     fetch_source(source, tmp_path / "cache", accepted_source_ids=set())
 
-    marker = (tmp_path / "cache" / "fixture-source" / ".hebocrbench-source.json")
+    marker = tmp_path / "cache" / "fixture-source" / ".hebocrbench-source.json"
     payload = __import__("json").loads(marker.read_text(encoding="utf-8"))
     assert payload["source_id"] == "fixture-source"
     assert payload["verification_status"] == "verified"
     assert payload["artifacts"][0]["artifact_id"] == "archive"
-    assert payload["artifacts"][0]["actual_sha256"] == hashlib.sha256(b"verified source").hexdigest()
+    assert (
+        payload["artifacts"][0]["actual_sha256"] == hashlib.sha256(b"verified source").hexdigest()
+    )

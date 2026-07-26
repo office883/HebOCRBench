@@ -11,9 +11,7 @@ from typing import Mapping, Sequence
 from .io import sha256_file, write_json
 
 
-def rank_page_candidates(
-    pages: Sequence[Mapping[str, object]], *, maximum: int
-) -> list[int]:
+def rank_page_candidates(pages: Sequence[Mapping[str, object]], *, maximum: int) -> list[int]:
     """Rank usable pages for structural diversity before final verification."""
 
     if maximum < 0:
@@ -27,7 +25,14 @@ def rank_page_candidates(
         hebrew = int(page.get("hebrew_letters", 0) or 0)
         number = int(page.get("page_number", 0) or 0)
         # Prefer structurally difficult pages, then stronger Hebrew content.
-        return (int(table_count > 0), int(form_signal > 0), mixed, table_count + form_signal, hebrew, -number)
+        return (
+            int(table_count > 0),
+            int(form_signal > 0),
+            mixed,
+            table_count + form_signal,
+            hebrew,
+            -number,
+        )
 
     ordered = sorted(usable, key=key, reverse=True)
     return [int(page["page_number"]) for page in ordered[:maximum]]
@@ -63,7 +68,9 @@ def template_family_id(
 def _inventory(root: Path) -> dict[str, object]:
     excluded = {".hebocrbench-source.json", "SOURCE_INVENTORY.json"}
     files: list[dict[str, object]] = []
-    for path in sorted(item for item in root.rglob("*") if item.is_file() and not item.is_symlink()):
+    for path in sorted(
+        item for item in root.rglob("*") if item.is_file() and not item.is_symlink()
+    ):
         relative = path.relative_to(root).as_posix()
         if relative in excluded:
             continue

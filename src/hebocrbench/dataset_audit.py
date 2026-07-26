@@ -114,9 +114,7 @@ def _cross_split_groups(
             continue
         groups[str(value)].append((str(record.get("split", "")), str(record.get("page_id", ""))))
     return {
-        value: pages
-        for value, pages in groups.items()
-        if len({split for split, _ in pages}) > 1
+        value: pages for value, pages in groups.items() if len({split for split, _ in pages}) > 1
     }
 
 
@@ -198,7 +196,9 @@ def audit_dataset(
                 actual = _sha256(image_path)
                 declared = str(image.get("sha256", "")).lower()
                 if not declared:
-                    report.add("error", "missing_image_sha256", "Image SHA-256 is missing", [page_id])
+                    report.add(
+                        "error", "missing_image_sha256", "Image SHA-256 is missing", [page_id]
+                    )
                 elif declared != actual:
                     report.add(
                         "error",
@@ -257,9 +257,7 @@ def audit_dataset(
     # RapidFuzz evaluates the complete candidate matrix in compiled code. This
     # keeps the audit exact at the configured threshold without the quadratic
     # Python loop that made book-scale corpora impractically slow.
-    eligible = [
-        item for item in normalized_texts if len(item[2]) >= minimum_near_text_length
-    ]
+    eligible = [item for item in normalized_texts if len(item[2]) >= minimum_near_text_length]
     if len(eligible) >= 2:
         similarities = process.cdist(
             [item[2] for item in eligible],

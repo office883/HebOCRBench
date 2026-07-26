@@ -59,7 +59,9 @@ def _discover_annotations(source: CorpusSource, root: Path) -> list[Path]:
     found: set[Path] = set()
     for pattern in raw_globs:
         for path in root.glob(str(pattern)):
-            if path.is_file() and not _matches_any(path, [str(item) for item in excluded], relative_to=root):
+            if path.is_file() and not _matches_any(
+                path, [str(item) for item in excluded], relative_to=root
+            ):
                 found.add(path)
     return sorted(found, key=lambda path: path.relative_to(root).as_posix())
 
@@ -112,7 +114,9 @@ def _find_image(annotation: Path, source_root: Path, source: CorpusSource) -> tu
         return matches[0], matches[0].parent
     if not matches:
         raise BuildError(f"{annotation}: referenced image {image_name!r} was not found")
-    raise BuildError(f"{annotation}: referenced image {image_name!r} is ambiguous ({len(matches)} matches)")
+    raise BuildError(
+        f"{annotation}: referenced image {image_name!r} is ambiguous ({len(matches)} matches)"
+    )
 
 
 def _upstream_split(source: CorpusSource, relative_annotation: Path) -> str:
@@ -191,7 +195,9 @@ def _context(source: CorpusSource, split: str) -> ConversionContext:
     )
 
 
-def _convert_source(source: CorpusSource, source_root: Path, build_root: Path) -> list[dict[str, object]]:
+def _convert_source(
+    source: CorpusSource, source_root: Path, build_root: Path
+) -> list[dict[str, object]]:
     annotations = _discover_annotations(source, source_root)
     if not annotations:
         raise BuildError(f"{source.source_id}: no annotations matched the registry discovery rules")
@@ -215,10 +221,15 @@ def _convert_source(source: CorpusSource, source_root: Path, build_root: Path) -
                     if not isinstance(image, dict) or not isinstance(image.get("path"), str):
                         raise ValueError("modern PDF converter returned no image path")
                     image_path = (build_root / str(image["path"])).resolve()
-                    if build_root.resolve() != image_path and build_root.resolve() not in image_path.parents:
+                    if (
+                        build_root.resolve() != image_path
+                        and build_root.resolve() not in image_path.parents
+                    ):
                         raise ValueError("modern PDF image path escapes build root")
                     if not image_path.is_file():
-                        raise ValueError(f"modern PDF converter did not create image: {image['path']}")
+                        raise ValueError(
+                            f"modern PDF converter did not create image: {image['path']}"
+                        )
                     image["sha256"] = sha256_file(image_path)
                     metadata = record.get("metadata")
                     if not isinstance(metadata, dict):
@@ -230,7 +241,9 @@ def _convert_source(source: CorpusSource, source_root: Path, build_root: Path) -
                 continue
             if source.converter in {"pagexml", "alto"}:
                 image_path, image_root = _find_image(annotation, source_root, source)
-                converter = convert_pagexml_file if source.converter == "pagexml" else convert_alto_file
+                converter = (
+                    convert_pagexml_file if source.converter == "pagexml" else convert_alto_file
+                )
                 record = converter(annotation, image_root, context)
                 page_id, document_id = _identity(source, relative_annotation, image_path.stem)
                 record["page_id"] = page_id
@@ -273,7 +286,9 @@ def _copy_source_verification_report(
     """Validate and preserve acquisition evidence without trusting it blindly."""
 
     candidates = [source_root / ".hebocrbench-source.json"]
-    candidates.extend(parent / ".hebocrbench-source.json" for parent in list(source_root.parents)[:4])
+    candidates.extend(
+        parent / ".hebocrbench-source.json" for parent in list(source_root.parents)[:4]
+    )
     marker_path: Path | None = None
     marker: Mapping[str, object] | None = None
     problems: list[str] = []
@@ -292,7 +307,9 @@ def _copy_source_verification_report(
         marker = value
         break
 
-    expected = {artifact.artifact_id: artifact for artifact in source.artifacts if artifact.required}
+    expected = {
+        artifact.artifact_id: artifact for artifact in source.artifacts if artifact.required
+    }
     sanitized_artifacts: list[dict[str, object]] = []
     if marker is None:
         if not problems:
@@ -316,13 +333,21 @@ def _copy_source_verification_report(
                 continue
             checksum = evidence.get("registry_checksum")
             if artifact.checksum is not None:
-                wanted = {"algorithm": artifact.checksum.algorithm, "value": artifact.checksum.value}
+                wanted = {
+                    "algorithm": artifact.checksum.algorithm,
+                    "value": artifact.checksum.value,
+                }
                 if checksum != wanted:
                     problems.append(f"registry checksum mismatch for {artifact_id}")
-            if artifact.revision is not None and evidence.get("requested_revision") != artifact.revision:
+            if (
+                artifact.revision is not None
+                and evidence.get("requested_revision") != artifact.revision
+            ):
                 problems.append(f"requested revision mismatch for {artifact_id}")
             actual_sha = str(evidence.get("actual_sha256", "")).lower()
-            if len(actual_sha) != 64 or any(character not in "0123456789abcdef" for character in actual_sha):
+            if len(actual_sha) != 64 or any(
+                character not in "0123456789abcdef" for character in actual_sha
+            ):
                 problems.append(f"invalid actual SHA-256 for {artifact_id}")
             size = evidence.get("size_bytes")
             if not isinstance(size, int) or size < 0:
@@ -341,7 +366,9 @@ def _copy_source_verification_report(
         "schema_version": "1.0",
         "source_id": source.source_id,
         "source_version": source.version,
-        "verification_status": "verified_acquisition" if marker is not None and not problems else "unverified",
+        "verification_status": "verified_acquisition"
+        if marker is not None and not problems
+        else "unverified",
         "required_artifact_ids": sorted(expected),
         "artifacts": sanitized_artifacts,
         "problems": problems,
@@ -351,6 +378,7 @@ def _copy_source_verification_report(
     destination = build_root / "source_reports" / f"{source.source_id}.json"
     write_json(destination, report)
     return report
+
 
 def _attribution(source: CorpusSource) -> dict[str, object]:
     return {
@@ -375,7 +403,9 @@ def _bibtex(sources: Sequence[CorpusSource]) -> str:
     entries: list[str] = []
     for source in sources:
         key = _safe_token(str(source.citation.get("key", source.source_id)))
-        text = str(source.citation.get("text", source.title)).replace("{", "\\{").replace("}", "\\}")
+        text = (
+            str(source.citation.get("text", source.title)).replace("{", "\\{").replace("}", "\\}")
+        )
         title = source.title.replace("{", "\\{").replace("}", "\\}")
         entries.append(
             "\n".join(
@@ -407,7 +437,9 @@ def _license_text(source: CorpusSource) -> str:
         str(source.citation.get("text", source.title)),
     ]
     if source.license.conflicts:
-        lines.extend(["", "Known license conflicts:", *[f"- {item}" for item in source.license.conflicts]])
+        lines.extend(
+            ["", "Known license conflicts:", *[f"- {item}" for item in source.license.conflicts]]
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -418,7 +450,9 @@ def _file_inventory(root: Path, *, exclude: set[str] | None = None) -> list[dict
         relative = path.relative_to(root).as_posix()
         if relative in excluded:
             continue
-        files.append({"path": relative, "sha256": sha256_file(path), "size_bytes": path.stat().st_size})
+        files.append(
+            {"path": relative, "sha256": sha256_file(path), "size_bytes": path.stat().st_size}
+        )
     return files
 
 
@@ -443,8 +477,12 @@ def build_corpus(
         if source.license.requires_acceptance and source.source_id not in accepted_source_ids
     ]
     if missing_acceptance:
-        raise BuildError("Explicit license acceptance required for: " + ", ".join(missing_acceptance))
-    missing_roots = [source.source_id for source in selected if source.source_id not in source_roots]
+        raise BuildError(
+            "Explicit license acceptance required for: " + ", ".join(missing_acceptance)
+        )
+    missing_roots = [
+        source.source_id for source in selected if source.source_id not in source_roots
+    ]
     if missing_roots:
         raise BuildError("Missing source roots for: " + ", ".join(missing_roots))
     if output.exists() and not overwrite:
@@ -500,7 +538,9 @@ def build_corpus(
             "registry_fingerprint": registry.fingerprint,
             "profile": profile,
             "source_ids": [source.source_id for source in selected],
-            "accepted_source_ids": sorted(set(accepted_source_ids) & {source.source_id for source in selected}),
+            "accepted_source_ids": sorted(
+                set(accepted_source_ids) & {source.source_id for source in selected}
+            ),
             "source_verification": {
                 source_id: report for source_id, report in sorted(source_verification.items())
             },
@@ -512,9 +552,7 @@ def build_corpus(
         lock = {
             **fingerprint_basis,
             "dataset_fingerprint": dataset_fingerprint,
-            "source_licenses": {
-                source.source_id: source.license.spdx for source in selected
-            },
+            "source_licenses": {source.source_id: source.license.spdx for source in selected},
             "source_verification": {
                 source_id: report for source_id, report in sorted(source_verification.items())
             },
@@ -530,7 +568,9 @@ def build_corpus(
             "registry_fingerprint": registry.fingerprint,
             "page_count": len(records),
             "source_ids": [source.source_id for source in selected],
-            "accepted_source_ids": sorted(set(accepted_source_ids) & {source.source_id for source in selected}),
+            "accepted_source_ids": sorted(
+                set(accepted_source_ids) & {source.source_id for source in selected}
+            ),
             "source_verification": {
                 source_id: report for source_id, report in sorted(source_verification.items())
             },
@@ -585,7 +625,9 @@ def freeze_corpus(build_root: str | Path) -> dict[str, object]:
             raise BuildError(f"Manifest file is missing: {relative}")
         actual = sha256_file(path)
         if actual != expected:
-            raise BuildError(f"Manifest hash mismatch for {relative}: expected {expected}, got {actual}")
+            raise BuildError(
+                f"Manifest hash mismatch for {relative}: expected {expected}, got {actual}"
+            )
         verified += 1
     marker = {
         "schema_version": "1.0",

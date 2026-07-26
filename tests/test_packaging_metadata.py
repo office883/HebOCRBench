@@ -2,17 +2,16 @@ from __future__ import annotations
 
 from importlib import resources
 from pathlib import Path
-import tomllib
-
 from hebocrbench import __version__
 from hebocrbench.corpus_registry import load_registry
+from hebocrbench._toml import loads as toml_loads
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_release_version_is_1_0_0_everywhere():
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    project = toml_loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
 
     assert project["version"] == "1.0.0"
     assert __version__ == "1.0.0"
@@ -23,7 +22,10 @@ def test_authoritative_registry_matches_packaged_registry():
     packaged = resources.files("hebocrbench").joinpath("data/corpus-registry.yaml").read_bytes()
 
     assert packaged == authoritative
-    assert load_registry(None).fingerprint == load_registry(ROOT / "corpora" / "registry.yaml").fingerprint
+    assert (
+        load_registry(None).fingerprint
+        == load_registry(ROOT / "corpora" / "registry.yaml").fingerprint
+    )
 
 
 def test_default_benchmark_config_is_packaged_verbatim():
@@ -47,7 +49,9 @@ def test_registry_lock_matches_authoritative_registry():
     registry = load_registry(ROOT / "corpora" / "registry.yaml")
     lock = json.loads((ROOT / "corpora" / "registry.lock.json").read_text(encoding="utf-8"))
     packaged = json.loads(
-        resources.files("hebocrbench").joinpath("data/corpus-registry.lock.json").read_text(encoding="utf-8")
+        resources.files("hebocrbench")
+        .joinpath("data/corpus-registry.lock.json")
+        .read_text(encoding="utf-8")
     )
 
     assert lock == packaged
@@ -58,7 +62,7 @@ def test_registry_lock_matches_authoritative_registry():
 
 
 def test_package_data_includes_registry_lock_and_default_config():
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    project = toml_loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     patterns = set(project["tool"]["setuptools"]["package-data"]["hebocrbench"])
 
     assert "data/*.yaml" in patterns
@@ -76,9 +80,7 @@ def test_registry_and_profile_locks_are_generated_from_runtime_metadata():
     registry_lock = json.loads(
         (ROOT / "corpora" / "registry.lock.json").read_text(encoding="utf-8")
     )
-    profile_lock = json.loads(
-        (ROOT / "corpora" / "profiles.lock.json").read_text(encoding="utf-8")
-    )
+    profile_lock = json.loads((ROOT / "corpora" / "profiles.lock.json").read_text(encoding="utf-8"))
 
     assert registry_lock_payload(registry, benchmark_version="1.0.0") == registry_lock
     assert profile_lock_payload(profiles, registry_fingerprint=registry.fingerprint) == profile_lock
@@ -94,13 +96,13 @@ def test_registry_and_profile_locks_are_generated_from_runtime_metadata():
 
 def test_authoritative_profiles_and_lock_match_packaged_resources():
     authoritative_profiles = (ROOT / "corpora" / "profiles.yaml").read_bytes()
-    packaged_profiles = resources.files("hebocrbench").joinpath(
-        "data/corpus-profiles.yaml"
-    ).read_bytes()
+    packaged_profiles = (
+        resources.files("hebocrbench").joinpath("data/corpus-profiles.yaml").read_bytes()
+    )
     authoritative_lock = (ROOT / "corpora" / "profiles.lock.json").read_bytes()
-    packaged_lock = resources.files("hebocrbench").joinpath(
-        "data/corpus-profiles.lock.json"
-    ).read_bytes()
+    packaged_lock = (
+        resources.files("hebocrbench").joinpath("data/corpus-profiles.lock.json").read_bytes()
+    )
 
     assert packaged_profiles == authoritative_profiles
     assert packaged_lock == authoritative_lock
@@ -117,7 +119,7 @@ def test_modern_release_tree_contains_no_historical_source_materializers():
 
 
 def test_base_runtime_declares_modern_pdf_dependency():
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    project = toml_loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     dependencies = set(project["dependencies"])
 
     assert any(item.startswith("PyMuPDF>=") for item in dependencies)

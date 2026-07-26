@@ -126,9 +126,7 @@ def repair_source_polygon(
         or repaired.geom_type != "Polygon"
         or not repaired.is_valid
     ):
-        raise ValueError(
-            f"Could not repair {element_type} {element_id!r}: {original_reason}"
-        )
+        raise ValueError(f"Could not repair {element_type} {element_id!r}: {original_reason}")
 
     output = _polygon_exterior(repaired)
     return output, {
@@ -166,7 +164,9 @@ def normalize_direction(value: str | None, language: str | None = None) -> str:
     return "rtl" if normalize_language(language, "") == "he" else "ltr"
 
 
-def image_descriptor(image_path: Path, *, relative_name: str, declared_width: int, declared_height: int) -> dict[str, object]:
+def image_descriptor(
+    image_path: Path, *, relative_name: str, declared_width: int, declared_height: int
+) -> dict[str, object]:
     if not image_path.is_file():
         raise FileNotFoundError(f"Image referenced by annotation does not exist: {image_path}")
     with Image.open(image_path) as image:

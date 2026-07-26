@@ -138,9 +138,7 @@ def load_profiles(
         source_ids = _text_list(item, "source_ids", location)
         unknown = sorted(set(source_ids) - set(registry.sources))
         if unknown:
-            raise ProfileError(
-                f"{location} references unknown sources: " + ", ".join(unknown)
-            )
+            raise ProfileError(f"{location} references unknown sources: " + ", ".join(unknown))
         allowed = _text_list(item, "allowed_license_tiers", location)
         actual_tiers = {registry.sources[source_id].license.tier for source_id in source_ids}
         disallowed = sorted(actual_tiers - set(allowed))

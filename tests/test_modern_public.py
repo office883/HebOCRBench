@@ -10,10 +10,38 @@ from hebocrbench.modern_public import (
 
 def test_rank_page_candidates_prefers_tables_forms_and_mixed_bidi():
     pages = [
-        {"page_number": 1, "usable": True, "table_count": 0, "form_signal": 0, "mixed_bidi": False, "hebrew_letters": 500},
-        {"page_number": 2, "usable": True, "table_count": 2, "form_signal": 0, "mixed_bidi": True, "hebrew_letters": 400},
-        {"page_number": 3, "usable": True, "table_count": 0, "form_signal": 3, "mixed_bidi": True, "hebrew_letters": 300},
-        {"page_number": 4, "usable": False, "table_count": 9, "form_signal": 9, "mixed_bidi": True, "hebrew_letters": 900},
+        {
+            "page_number": 1,
+            "usable": True,
+            "table_count": 0,
+            "form_signal": 0,
+            "mixed_bidi": False,
+            "hebrew_letters": 500,
+        },
+        {
+            "page_number": 2,
+            "usable": True,
+            "table_count": 2,
+            "form_signal": 0,
+            "mixed_bidi": True,
+            "hebrew_letters": 400,
+        },
+        {
+            "page_number": 3,
+            "usable": True,
+            "table_count": 0,
+            "form_signal": 3,
+            "mixed_bidi": True,
+            "hebrew_letters": 300,
+        },
+        {
+            "page_number": 4,
+            "usable": False,
+            "table_count": 9,
+            "form_signal": 9,
+            "mixed_bidi": True,
+            "hebrew_letters": 900,
+        },
     ]
     assert rank_page_candidates(pages, maximum=3) == [2, 3, 1]
 
@@ -59,6 +87,8 @@ def test_write_source_evidence_binds_every_file(tmp_path):
     paths = {item["path"] for item in inventory["files"]}
     assert {"a.txt", "nested/b.bin", "SOURCE_EVIDENCE.json"} <= paths
     expected = hashlib.sha256(
-        json.dumps(inventory["files"], ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        json.dumps(
+            inventory["files"], ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
     ).hexdigest()
     assert inventory["tree_sha256"] == expected

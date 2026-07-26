@@ -50,7 +50,9 @@ def _coords(
     element_type: str,
     repairs: list[dict[str, object]],
 ) -> list[list[float]]:
-    node = next((child for child in list(element) if child.tag.rsplit("}", 1)[-1] == "Coords"), None)
+    node = next(
+        (child for child in list(element) if child.tag.rsplit("}", 1)[-1] == "Coords"), None
+    )
     if node is None:
         raise ValueError(f"PAGE element {element.get('id', '<unknown>')} has no Coords")
     points = parse_points(node.get("points"))
@@ -122,9 +124,7 @@ def convert_pagexml_file(
             line_direction = normalize_direction(line.get("readingDirection"), line_language)
             value: dict[str, object] = {
                 "line_id": line_id,
-                "polygon": _coords(
-                    line, element_type="page_text_line", repairs=geometry_repairs
-                ),
+                "polygon": _coords(line, element_type="page_text_line", repairs=geometry_repairs),
                 "text": _line_text(line),
                 "base_direction": line_direction,
                 "language": line_language,
@@ -136,9 +136,7 @@ def convert_pagexml_file(
         region_value: dict[str, object] = {
             "region_id": region_id,
             "type": region.get("type", "text"),
-            "polygon": _coords(
-                region, element_type="page_text_region", repairs=geometry_repairs
-            ),
+            "polygon": _coords(region, element_type="page_text_region", repairs=geometry_repairs),
             "base_direction": direction,
             "language": language,
             "lines": lines,

@@ -174,7 +174,9 @@ def _vertical_match(word: _Word, row: Sequence[_Word]) -> float:
     top = max(word.y0, min(item.y0 for item in row))
     bottom = min(word.y1, max(item.y1 for item in row))
     overlap = max(0.0, bottom - top)
-    return overlap / min(word.height, max(0.1, max(item.y1 for item in row) - min(item.y0 for item in row)))
+    return overlap / min(
+        word.height, max(0.1, max(item.y1 for item in row) - min(item.y0 for item in row))
+    )
 
 
 def _cluster_visual_rows(words: Sequence[_Word]) -> list[list[_Word]]:
@@ -401,9 +403,7 @@ def convert_modern_pdf_page(
     document = fitz.open(source)
     try:
         if page_number > document.page_count:
-            raise ModernPdfError(
-                f"page {page_number} exceeds PDF page count {document.page_count}"
-            )
+            raise ModernPdfError(f"page {page_number} exceeds PDF page count {document.page_count}")
         page = document[page_number - 1]
         scale = dpi / 72.0
         regions, pymupdf_text = _extract_regions(page, scale)
@@ -426,9 +426,7 @@ def convert_modern_pdf_page(
         )
 
         root = Path(output_root)
-        image_relative = (
-            Path("images") / _safe(document_id) / f"{_safe(page_id)}-{dpi}dpi.png"
-        )
+        image_relative = Path("images") / _safe(document_id) / f"{_safe(page_id)}-{dpi}dpi.png"
         image_path = root / image_relative
         image_path.parent.mkdir(parents=True, exist_ok=True)
         pixmap = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
@@ -436,9 +434,7 @@ def convert_modern_pdf_page(
         image_path.write_bytes(png_bytes)
         image_sha256 = hashlib.sha256(png_bytes).hexdigest()
 
-        metadata = context.metadata(
-            annotation_path=f"{source.as_posix()}#page={page_number}"
-        )
+        metadata = context.metadata(annotation_path=f"{source.as_posix()}#page={page_number}")
         metadata.update(
             {
                 "pdf_page_number": page_number,
@@ -449,12 +445,8 @@ def convert_modern_pdf_page(
                     "extractors": ["pymupdf-words", "pdftotext-layout"],
                     "pymupdf_token_count": len(_comparison_tokens(pymupdf_text)),
                     "pdftotext_token_count": len(_comparison_tokens(poppler_text)),
-                    "pymupdf_text_sha256": hashlib.sha256(
-                        pymupdf_text.encode("utf-8")
-                    ).hexdigest(),
-                    "pdftotext_sha256": hashlib.sha256(
-                        poppler_text.encode("utf-8")
-                    ).hexdigest(),
+                    "pymupdf_text_sha256": hashlib.sha256(pymupdf_text.encode("utf-8")).hexdigest(),
+                    "pdftotext_sha256": hashlib.sha256(poppler_text.encode("utf-8")).hexdigest(),
                 },
             }
         )

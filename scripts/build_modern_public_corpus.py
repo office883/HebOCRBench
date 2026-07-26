@@ -23,7 +23,6 @@ import shutil
 import sys
 import tempfile
 import time
-from typing import Any
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
@@ -219,15 +218,16 @@ def _basic_page_evidence(page: fitz.Page) -> dict[str, object]:
     alphabetic = sum(char.isalpha() for char in text)
     hebrew_letters = len(HEBREW_RE.findall(text))
     arabic_letters = sum(
-        char.isalpha() and "ARABIC" in __import__("unicodedata").name(char, "")
-        for char in text
+        char.isalpha() and "ARABIC" in __import__("unicodedata").name(char, "") for char in text
     )
     try:
         table_count = len(page.find_tables().tables)
     except Exception:  # noqa: BLE001 - table detector is best-effort evidence
         table_count = 0
     form_signal = sum(1 for pattern in FORM_PATTERNS if pattern.search(text))
-    mixed_bidi = bool(HEBREW_RE.search(text)) and bool(LATIN_RE.search(text) or NUMBER_RE.search(text))
+    mixed_bidi = bool(HEBREW_RE.search(text)) and bool(
+        LATIN_RE.search(text) or NUMBER_RE.search(text)
+    )
     strong = first_strong_direction(text)
     usable = (
         hebrew_letters >= 120
@@ -372,9 +372,7 @@ def materialize(args: argparse.Namespace) -> dict[str, object]:
                 pdf_path.write_bytes(pdf_bytes)
                 document = fitz.open(pdf_path)
                 if document.page_count <= 0 or document.page_count > args.maximum_pdf_pages:
-                    raise MaterializationError(
-                        f"unsupported PDF page count: {document.page_count}"
-                    )
+                    raise MaterializationError(f"unsupported PDF page count: {document.page_count}")
                 page_evidence = [_basic_page_evidence(page) for page in document]
                 usable = [item for item in page_evidence if bool(item["usable"])]
                 if not usable:
@@ -388,7 +386,9 @@ def materialize(args: argparse.Namespace) -> dict[str, object]:
                     dpi=args.dpi,
                 )
                 if not accepted_page_numbers:
-                    raise MaterializationError("all candidate pages failed dual-extractor verification")
+                    raise MaterializationError(
+                        "all candidate pages failed dual-extractor verification"
+                    )
                 first_number = accepted_page_numbers[0]
                 first_evidence = next(
                     item for item in usable if int(item["page_number"]) == first_number
@@ -445,7 +445,11 @@ def materialize(args: argparse.Namespace) -> dict[str, object]:
                         "catalog_last_updated": candidate["catalog_last_updated"],
                         "document_type": candidate["document_type"],
                         "layout_type": (
-                            "table" if selected_table_pages else "multi_region" if max(region_counts) > 1 else "single_column"
+                            "table"
+                            if selected_table_pages
+                            else "multi_region"
+                            if max(region_counts) > 1
+                            else "single_column"
                         ),
                         "selected_table_pages": selected_table_pages,
                         "selected_form_pages": selected_form_pages,
@@ -600,7 +604,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--entities", nargs="+", default=list(DEFAULT_ENTITIES))
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--push-to-hub", metavar="OWNER/DATASET")
-    parser.add_argument("--public", action="store_true", help="make a newly created Hub repo public")
+    parser.add_argument(
+        "--public", action="store_true", help="make a newly created Hub repo public"
+    )
     return parser
 
 

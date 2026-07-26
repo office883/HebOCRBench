@@ -39,9 +39,7 @@ def test_pagexml_converter_preserves_unicode_baselines_and_explicit_reading_orde
     image_root.mkdir()
     Image.new("RGB", (1200, 800), "white").save(image_root / "page.jpg")
 
-    record = convert_pagexml_file(
-        Path("tests/fixtures/page/sample.xml"), image_root, _context()
-    )
+    record = convert_pagexml_file(Path("tests/fixtures/page/sample.xml"), image_root, _context())
 
     assert record["page_id"] == "pinkas-fixture-page"
     assert record["document_id"] == "pinkas-fixture"
@@ -74,7 +72,7 @@ def test_pagexml_converter_repairs_self_touching_contours_and_audits_change(tmp_
     Image.new("RGB", (100, 100), "white").save(tmp_path / "repair.jpg")
     annotation = tmp_path / "repair.xml"
     annotation.write_text(
-        '''<?xml version="1.0" encoding="UTF-8"?>
+        """<?xml version="1.0" encoding="UTF-8"?>
 <PcGts xmlns="http://schema.primaresearch.org/PAGE/gts/pagecontent/2018-07-15">
   <Page imageFilename="repair.jpg" imageWidth="100" imageHeight="100">
     <TextRegion id="r1" type="paragraph">
@@ -85,7 +83,7 @@ def test_pagexml_converter_repairs_self_touching_contours_and_audits_change(tmp_
       </TextLine>
     </TextRegion>
   </Page>
-</PcGts>''',
+</PcGts>""",
         encoding="utf-8",
     )
 

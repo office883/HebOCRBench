@@ -126,7 +126,9 @@ def _marker(source_id: str, snapshot: Path) -> None:
 def _write_zip(source_root: Path, destination: Path) -> None:
     prefix = f"HebOCRBench-v{VERSION}-reference-fixture"
     temporary = destination.with_suffix(destination.suffix + ".tmp")
-    with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+    with zipfile.ZipFile(
+        temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
+    ) as archive:
         for path in sorted(item for item in source_root.rglob("*") if item.is_file()):
             relative = path.relative_to(source_root).as_posix()
             info = zipfile.ZipInfo(f"{prefix}/{relative}", ZIP_TIMESTAMP)
@@ -146,8 +148,12 @@ def build_reference_fixture(output_zip: Path) -> Path:
         (page_root / "test").mkdir(parents=True)
         (alto_root / "train").mkdir(parents=True)
 
-        shutil.copyfile(ROOT / "tests" / "fixtures" / "page" / "sample.xml", page_root / "test" / "sample.xml")
-        shutil.copyfile(ROOT / "tests" / "fixtures" / "alto" / "sample.xml", alto_root / "train" / "sample.xml")
+        shutil.copyfile(
+            ROOT / "tests" / "fixtures" / "page" / "sample.xml", page_root / "test" / "sample.xml"
+        )
+        shutil.copyfile(
+            ROOT / "tests" / "fixtures" / "alto" / "sample.xml", alto_root / "train" / "sample.xml"
+        )
         Image.new("RGB", (1200, 800), "white").save(page_root / "test" / "page.jpg")
         Image.new("RGB", (1000, 600), "white").save(alto_root / "train" / "alto-page.png")
 

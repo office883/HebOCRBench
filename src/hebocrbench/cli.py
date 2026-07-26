@@ -373,8 +373,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     evaluate.add_argument("--skip-validation", action="store_true")
 
-    compare = sub.add_parser("compare", help="Build a certified comparison table from report bundles")
-    compare.add_argument("--reports", required=True, type=Path, help="Directory containing report subdirectories")
+    compare = sub.add_parser(
+        "compare", help="Build a certified comparison table from report bundles"
+    )
+    compare.add_argument(
+        "--reports", required=True, type=Path, help="Directory containing report subdirectories"
+    )
     compare.add_argument("--output", required=True, type=Path)
 
     modern_score = sub.add_parser(
@@ -435,7 +439,10 @@ def build_parser() -> argparse.ArgumentParser:
     data_verify.add_argument("--source", required=True, action="append")
     data_verify.add_argument("--cache", required=True, type=Path)
 
-    for name, help_text in (("convert", "Convert selected sources into benchmark form"), ("build", "Build an audited corpus")):
+    for name, help_text in (
+        ("convert", "Convert selected sources into benchmark form"),
+        ("build", "Build an audited corpus"),
+    ):
         command = data_sub.add_parser(name, help=help_text)
         command.add_argument("--registry", type=Path)
         command.add_argument("--profiles", type=Path)
@@ -461,7 +468,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     release = sub.add_parser("release", help="Certify a materialized benchmark release")
     release_sub = release.add_subparsers(dest="release_command", required=True)
-    release_certify = release_sub.add_parser("certify", help="Run all HebOCRBench 1.0 certification gates")
+    release_certify = release_sub.add_parser(
+        "certify", help="Run all HebOCRBench 1.0 certification gates"
+    )
     release_certify.add_argument("--build-root", required=True, type=Path)
     release_certify.add_argument("--registry", type=Path)
     release_certify.add_argument("--profiles", type=Path)
@@ -515,9 +524,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "headline_tracks": sorted(
                         track_id for track_id, track in suite.tracks.items() if track.headline
                     ),
-                    "output": str(args.output)
-                    if args.modern_suite_command == "build"
-                    else None,
+                    "output": str(args.output) if args.modern_suite_command == "build" else None,
                 }
             )
             return 0
@@ -643,12 +650,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         config = (
             track_spec.benchmark_config
             if track_spec is not None
-            else load_benchmark_config(args.config) if args.config is not None else None
+            else load_benchmark_config(args.config)
+            if args.config is not None
+            else None
         )
         if track_spec is not None:
             unexpected = sorted(
-                {str(page.get("track", "")) for page in gold}
-                - set(track_spec.accepted_gold_tracks)
+                {str(page.get("track", "")) for page in gold} - set(track_spec.accepted_gold_tracks)
             )
             if unexpected:
                 _json_print(

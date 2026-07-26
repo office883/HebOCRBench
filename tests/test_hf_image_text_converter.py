@@ -42,9 +42,15 @@ def test_image_text_manifest_is_hash_locked_and_nfc(tmp_path: Path):
         citation_key="fixture",
         source_url="https://example.test/",
         metadata_defaults={
-            "languages": ["he"], "script": "Hebr", "script_style": "handwriting",
-            "era": "modern", "document_type": "character", "layout_type": "isolated",
-            "vocalization": "partial", "source_type": "form", "source_collection": "fixture",
+            "languages": ["he"],
+            "script": "Hebr",
+            "script_style": "handwriting",
+            "era": "modern",
+            "document_type": "character",
+            "layout_type": "isolated",
+            "vocalization": "partial",
+            "source_type": "form",
+            "source_collection": "fixture",
         },
     )
 

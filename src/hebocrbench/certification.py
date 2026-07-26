@@ -89,7 +89,11 @@ def _read_json(path: Path, report: CertificationReport, code: str) -> object | N
 
 def _safe_relative_path(value: str) -> bool:
     path = PurePosixPath(value.replace("\\", "/"))
-    return bool(value) and not path.is_absolute() and all(part not in {"", ".", ".."} for part in path.parts)
+    return (
+        bool(value)
+        and not path.is_absolute()
+        and all(part not in {"", ".", ".."} for part in path.parts)
+    )
 
 
 def _canonical_hash(value: object) -> str:
@@ -120,7 +124,9 @@ def _validate_manifest_schema(manifest: object, report: CertificationReport) -> 
     return not errors
 
 
-def _verify_inventory(root: Path, manifest: Mapping[str, object], report: CertificationReport) -> bool:
+def _verify_inventory(
+    root: Path, manifest: Mapping[str, object], report: CertificationReport
+) -> bool:
     files = manifest.get("files")
     if not isinstance(files, list):
         report.add("error", "manifest_inventory_missing", "Manifest file inventory is missing")
@@ -129,7 +135,9 @@ def _verify_inventory(root: Path, manifest: Mapping[str, object], report: Certif
     seen: set[str] = set()
     for item in files:
         if not isinstance(item, Mapping):
-            report.add("error", "manifest_inventory_entry", "Manifest inventory entry is not an object")
+            report.add(
+                "error", "manifest_inventory_entry", "Manifest inventory entry is not an object"
+            )
             valid = False
             continue
         relative = str(item.get("path", ""))
@@ -185,7 +193,9 @@ def _required_files(root: Path, source_ids: Sequence[str], report: Certification
     required.extend(f"source_reports/{source_id}.json" for source_id in source_ids)
     missing = [relative for relative in required if not (root / relative).is_file()]
     for relative in missing:
-        report.add("error", "required_file_missing", f"Required release file is missing: {relative}")
+        report.add(
+            "error", "required_file_missing", f"Required release file is missing: {relative}"
+        )
     return not missing
 
 
@@ -214,10 +224,14 @@ def _verify_sources(
     source_ids = [str(item) for item in raw_ids] if isinstance(raw_ids, list) else []
     unknown = sorted(set(source_ids) - set(registry.sources))
     if unknown:
-        report.add("error", "unknown_manifest_source", "Unknown manifest sources: " + ", ".join(unknown))
+        report.add(
+            "error", "unknown_manifest_source", "Unknown manifest sources: " + ", ".join(unknown)
+        )
     if not source_ids:
         report.add("error", "empty_manifest_sources", "Manifest contains no source IDs")
-    selected = [registry.sources[source_id] for source_id in source_ids if source_id in registry.sources]
+    selected = [
+        registry.sources[source_id] for source_id in source_ids if source_id in registry.sources
+    ]
 
     verification = manifest.get("source_verification", {})
     verification_map = verification if isinstance(verification, Mapping) else {}
@@ -257,10 +271,14 @@ def _verify_profile(
 ) -> bool:
     expected_tiers = sorted({source.license.tier for source in selected})
     raw_tiers = manifest.get("license_tiers", [])
-    declared_tiers = sorted(str(value) for value in raw_tiers) if isinstance(raw_tiers, list) else []
+    declared_tiers = (
+        sorted(str(value) for value in raw_tiers) if isinstance(raw_tiers, list) else []
+    )
     valid = declared_tiers == expected_tiers
     if not valid:
-        report.add("error", "license_tier_mismatch", "Manifest license tiers do not match registry sources")
+        report.add(
+            "error", "license_tier_mismatch", "Manifest license tiers do not match registry sources"
+        )
 
     profile_id = str(manifest.get("profile", ""))
     profile_key = profile_id.lower()
@@ -278,7 +296,11 @@ def _verify_profile(
         if selection.issues:
             valid = False
     elif any(token in profile_key for token in ("open", "permissive")):
-        restricted = [source.source_id for source in selected if source.license.tier not in {"open", "bundled"}]
+        restricted = [
+            source.source_id
+            for source in selected
+            if source.license.tier not in {"open", "bundled"}
+        ]
         if restricted:
             message = "Open profile includes restricted sources: " + ", ".join(restricted)
             report.add("error", "profile_license_violation", message)
@@ -317,7 +339,9 @@ def _recompute_fingerprint(lock: Mapping[str, object]) -> str | None:
 
 def _atomic_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
     temporary = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
@@ -355,10 +379,14 @@ def certify_release(
     manifest = manifest_value if isinstance(manifest_value, Mapping) else {}
     lock = lock_value if isinstance(lock_value, Mapping) else {}
     frozen = frozen_value if isinstance(frozen_value, Mapping) else {}
-    report.dataset_fingerprint = str(manifest.get("dataset_fingerprint")) if manifest.get("dataset_fingerprint") else None
+    report.dataset_fingerprint = (
+        str(manifest.get("dataset_fingerprint")) if manifest.get("dataset_fingerprint") else None
+    )
 
     source_ids_raw = manifest.get("source_ids", [])
-    source_ids = [str(value) for value in source_ids_raw] if isinstance(source_ids_raw, list) else []
+    source_ids = (
+        [str(value) for value in source_ids_raw] if isinstance(source_ids_raw, list) else []
+    )
     report.checks["required_files"] = _required_files(root, source_ids, report)
 
     version_ok = manifest.get("benchmark_version") == expected_version
@@ -372,7 +400,11 @@ def certify_release(
 
     registry_ok = manifest.get("registry_fingerprint") == registry.fingerprint
     if not registry_ok:
-        report.add("error", "registry_fingerprint_mismatch", "Build registry fingerprint differs from supplied registry")
+        report.add(
+            "error",
+            "registry_fingerprint_mismatch",
+            "Build registry fingerprint differs from supplied registry",
+        )
     report.checks["registry_fingerprint"] = registry_ok
 
     recomputed = _recompute_fingerprint(lock)
@@ -383,7 +415,11 @@ def certify_release(
         and recomputed == report.dataset_fingerprint
     )
     if not fingerprint_ok:
-        report.add("error", "dataset_fingerprint_mismatch", "Manifest, lock, freeze and recomputed fingerprint disagree")
+        report.add(
+            "error",
+            "dataset_fingerprint_mismatch",
+            "Manifest, lock, freeze and recomputed fingerprint disagree",
+        )
     report.checks["dataset_fingerprint"] = fingerprint_ok
 
     frozen_manifest_ok = bool(frozen) and frozen.get("manifest_sha256") == (
@@ -420,7 +456,10 @@ def certify_release(
             audit_ok = current_audit.is_valid
             for issue in current_audit.errors[:50]:
                 report.add("error", issue.code, issue.message)
-            if isinstance(saved_audit_value, Mapping) and bool(saved_audit_value.get("is_valid")) != current_audit.is_valid:
+            if (
+                isinstance(saved_audit_value, Mapping)
+                and bool(saved_audit_value.get("is_valid")) != current_audit.is_valid
+            ):
                 report.add("error", "stale_audit", "Saved audit status differs from current audit")
                 audit_ok = False
 
@@ -432,7 +471,11 @@ def certify_release(
                 except (OSError, json.JSONDecodeError):
                     stats_ok = False
             if not stats_ok:
-                report.add("error", "stale_statistics", "stats.json does not equal recomputed corpus statistics")
+                report.add(
+                    "error",
+                    "stale_statistics",
+                    "stats.json does not equal recomputed corpus statistics",
+                )
         except (OSError, ValueError) as exc:
             report.add("error", "gold_unreadable", f"Cannot validate gold data: {exc}")
     else:

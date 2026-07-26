@@ -31,7 +31,9 @@ def _verify_record(archive: zipfile.ZipFile) -> None:
         algorithm, encoded = digest.split("=", 1)
         assert algorithm == "sha256"
         payload = archive.read(name)
-        actual = base64.urlsafe_b64encode(hashlib.sha256(payload).digest()).rstrip(b"=").decode("ascii")
+        actual = (
+            base64.urlsafe_b64encode(hashlib.sha256(payload).digest()).rstrip(b"=").decode("ascii")
+        )
         assert encoded == actual
         assert int(size) == len(payload)
 
@@ -78,7 +80,10 @@ def test_build_source_zip_excludes_worktrees_caches_fonts_and_bytecode(tmp_path)
         names = archive.namelist()
         assert names
         assert all(name.startswith("HebOCRBench-v1.0.0/") for name in names)
-        assert not any("/.git/" in name or name.endswith("/.git") or "/.pytest_cache/" in name for name in names)
+        assert not any(
+            "/.git/" in name or name.endswith("/.git") or "/.pytest_cache/" in name
+            for name in names
+        )
         assert not any("/__pycache__/" in name or name.endswith((".pyc", ".pyo")) for name in names)
         assert not any(name.lower().endswith((".ttf", ".otf", ".woff", ".woff2")) for name in names)
         assert any(name.endswith("/README.md") for name in names)
@@ -106,9 +111,10 @@ def test_build_source_tar_gz_is_clean_and_deterministic(tmp_path):
     second = build_source_tar_gz(ROOT, tmp_path / "second")
 
     assert first.name == "HebOCRBench-v1.0.0.tar.gz"
-    assert hashlib.sha256(first.read_bytes()).hexdigest() == hashlib.sha256(
-        second.read_bytes()
-    ).hexdigest()
+    assert (
+        hashlib.sha256(first.read_bytes()).hexdigest()
+        == hashlib.sha256(second.read_bytes()).hexdigest()
+    )
     with tarfile.open(first, "r:gz") as archive:
         members = archive.getmembers()
         names = [member.name for member in members]
@@ -116,5 +122,7 @@ def test_build_source_tar_gz_is_clean_and_deterministic(tmp_path):
         assert all(name.startswith("HebOCRBench-v1.0.0/") for name in names)
         assert all(member.uid == 0 and member.gid == 0 for member in members)
         assert not any("/.git/" in name or "/__pycache__/" in name for name in names)
-        assert not any(name.endswith((".pyc", ".pyo", ".ttf", ".otf", ".woff", ".woff2")) for name in names)
+        assert not any(
+            name.endswith((".pyc", ".pyo", ".ttf", ".otf", ".woff", ".woff2")) for name in names
+        )
         assert any(name.endswith("/corpora/profiles.lock.json") for name in names)

@@ -116,6 +116,7 @@ def ascii_punctuation_prediction(gold_page: Mapping[str, Any]) -> Prediction:
     prediction = _prediction_shell(gold_page, name="ascii-punctuation")
     return _map_text_fields(prediction, lambda text: text.translate(mapping))
 
+
 BASELINE_FACTORIES = {
     "perfect": perfect_prediction,
     "empty": empty_prediction,

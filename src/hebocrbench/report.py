@@ -121,9 +121,7 @@ def _number(value: Any, digits: int = 4) -> str:
 
 
 def _codepoint_string(points: list[Mapping[str, Any]]) -> str:
-    return " · ".join(
-        f"{point.get('codepoint', '')} {point.get('name', '')}" for point in points
-    )
+    return " · ".join(f"{point.get('codepoint', '')} {point.get('name', '')}" for point in points)
 
 
 def _html_report(run: EvaluationRun, errors: list[dict[str, Any]]) -> str:
@@ -136,7 +134,9 @@ def _html_report(run: EvaluationRun, errors: list[dict[str, Any]]) -> str:
         "non_conformant": "לא־תואם",
         "not_evaluated": "לא הוערך",
     }.get(status, status)
-    status_class = "ok" if status == "conformant" else "bad" if status == "non_conformant" else "warn"
+    status_class = (
+        "ok" if status == "conformant" else "bad" if status == "non_conformant" else "warn"
+    )
 
     cards = [
         ("GCER שורות", _pct(recognition.get("line_gcer"))),
@@ -181,18 +181,18 @@ def _html_report(run: EvaluationRun, errors: list[dict[str, Any]]) -> str:
         error_blocks.append(
             f"""
             <article class="error-card">
-              <header><strong>#{index} · {html.escape(str(error['page_id']))}</strong>
-                <span>GCER {_pct(error['gcer'])}</span>
-                {'<span class="pill bad">חשד לסדר חזותי</span>' if error['visual_order_suspected'] else ''}
+              <header><strong>#{index} · {html.escape(str(error["page_id"]))}</strong>
+                <span>GCER {_pct(error["gcer"])}</span>
+                {'<span class="pill bad">חשד לסדר חזותי</span>' if error["visual_order_suspected"] else ""}
               </header>
               <div class="comparison">
-                <section><h4>אמת</h4><p class="sample" dir="rtl">{html.escape(str(error['reference']))}</p></section>
-                <section><h4>פלט</h4><p class="sample" dir="rtl">{html.escape(str(error['prediction']))}</p></section>
+                <section><h4>אמת</h4><p class="sample" dir="rtl">{html.escape(str(error["reference"]))}</p></section>
+                <section><h4>פלט</h4><p class="sample" dir="rtl">{html.escape(str(error["prediction"]))}</p></section>
               </div>
               <details>
                 <summary>קוד־פוינטים בסדר הלוגי</summary>
-                <p class="codepoints" dir="ltr"><b>REF:</b> {html.escape(_codepoint_string(error['reference_codepoints']))}</p>
-                <p class="codepoints" dir="ltr"><b>PRED:</b> {html.escape(_codepoint_string(error['prediction_codepoints']))}</p>
+                <p class="codepoints" dir="ltr"><b>REF:</b> {html.escape(_codepoint_string(error["reference_codepoints"]))}</p>
+                <p class="codepoints" dir="ltr"><b>PRED:</b> {html.escape(_codepoint_string(error["prediction_codepoints"]))}</p>
               </details>
             </article>
             """

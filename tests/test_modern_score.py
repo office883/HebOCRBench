@@ -3,7 +3,11 @@ from __future__ import annotations
 from copy import deepcopy
 
 from hebocrbench.modern_score import combine_modern_track_reports
-from hebocrbench.modern_suite import DEFAULT_HEADLINE_TRACKS, parse_modern_suite_lock, with_suite_fingerprint
+from hebocrbench.modern_suite import (
+    DEFAULT_HEADLINE_TRACKS,
+    parse_modern_suite_lock,
+    with_suite_fingerprint,
+)
 from hebocrbench.tracks import load_track
 
 

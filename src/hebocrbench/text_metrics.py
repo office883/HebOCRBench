@@ -99,9 +99,7 @@ def evaluate_text(reference: str, prediction: str) -> TextEvaluation:
     codepoint = align_sequences(list(ref), list(pred))
     grapheme = align_sequences(graphemes(ref), graphemes(pred))
     word = align_sequences(whitespace_tokens(ref), whitespace_tokens(pred))
-    base_letter = align_sequences(
-        list(strip_hebrew_marks(ref)), list(strip_hebrew_marks(pred))
-    )
+    base_letter = align_sequences(list(strip_hebrew_marks(ref)), list(strip_hebrew_marks(pred)))
     punctuation = align_sequences(punctuation_units(ref), punctuation_units(pred))
     return TextEvaluation(
         reference=ref,

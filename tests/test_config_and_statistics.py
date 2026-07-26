@@ -49,9 +49,7 @@ def test_document_bootstrap_is_deterministic(gold_page):
 
 
 def test_evaluator_emits_configured_bootstrap_intervals(gold_page):
-    config = BenchmarkConfig.from_mapping(
-        {"statistics": {"bootstrap_samples": 10, "seed": 3}}
-    )
+    config = BenchmarkConfig.from_mapping({"statistics": {"bootstrap_samples": 10, "seed": 3}})
     run = evaluate_dataset([gold_page], [perfect_prediction(gold_page)], config=config)
     assert run.metrics["confidence_intervals"]["line_gcer"]["lower"] == 0.0
     assert run.metrics["confidence_intervals"]["line_gcer"]["upper"] == 0.0

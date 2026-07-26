@@ -122,7 +122,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "published as separately checksummed assets according to their source terms."
         ),
     }
-    manifest.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    manifest.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     sums = write_checksums(
         [
             wheel,

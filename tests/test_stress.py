@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 
 from hebocrbench.io import load_jsonl, sha256_file
 from hebocrbench.stress import discover_hebrew_font, generate_stress_suite

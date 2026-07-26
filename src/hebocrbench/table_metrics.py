@@ -54,7 +54,6 @@ class TableMatchResult:
         return 2 * self.precision * self.recall / (self.precision + self.recall)
 
 
-
 def cell_span(cell: Cell) -> Span:
     return (
         int(cell["row_start"]),
@@ -81,9 +80,7 @@ def _spans(table: Mapping[str, object]) -> set[Span]:
     return {cell_span(cell) for cell in table.get("cells", [])}  # type: ignore[arg-type]
 
 
-def _structure_similarity(
-    gold: Mapping[str, object], prediction: Mapping[str, object]
-) -> float:
+def _structure_similarity(gold: Mapping[str, object], prediction: Mapping[str, object]) -> float:
     gold_spans = _spans(gold)
     pred_spans = _spans(prediction)
     _, _, span_f1 = _f1(len(gold_spans & pred_spans), len(pred_spans), len(gold_spans))
@@ -97,9 +94,7 @@ def _structure_similarity(
     )
 
 
-def _content_similarity(
-    gold: Mapping[str, object], prediction: Mapping[str, object]
-) -> float:
+def _content_similarity(gold: Mapping[str, object], prediction: Mapping[str, object]) -> float:
     def ordered_text(table: Mapping[str, object]) -> str:
         cells = sorted(
             table.get("cells", []),  # type: ignore[arg-type]
@@ -107,9 +102,7 @@ def _content_similarity(
         )
         return "\n".join(normalize_strict(str(cell.get("text", ""))) for cell in cells)
 
-    alignment = align_sequences(
-        graphemes(ordered_text(gold)), graphemes(ordered_text(prediction))
-    )
+    alignment = align_sequences(graphemes(ordered_text(gold)), graphemes(ordered_text(prediction)))
     return max(0.0, 1.0 - min(1.0, error_rate(alignment)))
 
 
@@ -197,7 +190,9 @@ def _grid_map(table: Mapping[str, object]) -> dict[tuple[int, int], Span]:
     return grid
 
 
-def evaluate_table(gold: Mapping[str, object], prediction: Mapping[str, object]) -> dict[str, object]:
+def evaluate_table(
+    gold: Mapping[str, object], prediction: Mapping[str, object]
+) -> dict[str, object]:
     gold_cells: Sequence[Cell] = gold.get("cells", [])  # type: ignore[assignment]
     pred_cells: Sequence[Cell] = prediction.get("cells", [])  # type: ignore[assignment]
     gold_by_span = {cell_span(cell): cell for cell in gold_cells}

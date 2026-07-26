@@ -179,8 +179,12 @@ def load_source_registry(path: str | Path | None = None) -> SourceRegistry:
             downloads=tuple(_download(item) for item in downloads if isinstance(item, Mapping)),
             license=_license(source_value["license"]),
             expected=dict(expected),
-            split_policy=str(source_value["split_policy"]) if source_value.get("split_policy") is not None else None,
-            importer=str(source_value["importer"]) if source_value.get("importer") is not None else None,
+            split_policy=str(source_value["split_policy"])
+            if source_value.get("split_policy") is not None
+            else None,
+            importer=str(source_value["importer"])
+            if source_value.get("importer") is not None
+            else None,
             notes=tuple(str(item) for item in source_value.get("notes", [])),
             citations=tuple(str(item) for item in source_value.get("citations", [])),
         )

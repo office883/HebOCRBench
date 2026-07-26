@@ -61,13 +61,9 @@ def _row(report_dir: Path) -> dict[str, Any]:
         "line_gcer": _nested(metrics, "recognition", "line_gcer"),
         "line_wer": _nested(metrics, "recognition", "line_wer"),
         "page_order_gcer": _nested(metrics, "recognition", "page_order_gcer"),
-        "reading_order_penalty_gcer": _nested(
-            metrics, "recognition", "reading_order_penalty_gcer"
-        ),
+        "reading_order_penalty_gcer": _nested(metrics, "recognition", "reading_order_penalty_gcer"),
         "base_letter_cer": _nested(metrics, "recognition", "base_letter_cer"),
-        "punctuation_error_rate": _nested(
-            metrics, "recognition", "punctuation_error_rate"
-        ),
+        "punctuation_error_rate": _nested(metrics, "recognition", "punctuation_error_rate"),
         "line_exact_rate": _nested(metrics, "recognition", "line_exact_rate"),
         "mark_recall": _nested(metrics, "diacritics", "mark_recall"),
         "mark_f1": _nested(metrics, "diacritics", "mark_f1"),
@@ -75,9 +71,7 @@ def _row(report_dir: Path) -> dict[str, Any]:
         "ltr_run_exact_rate": _nested(metrics, "conformance", "ltr_run_exact_rate"),
         "numeric_exact_rate": _nested(metrics, "conformance", "numeric_exact_rate"),
         "bracket_exact_rate": _nested(metrics, "conformance", "bracket_exact_rate"),
-        "visual_order_failure_count": _nested(
-            metrics, "conformance", "visual_order_failure_count"
-        ),
+        "visual_order_failure_count": _nested(metrics, "conformance", "visual_order_failure_count"),
         "order_pairwise_accuracy": _nested(metrics, "reading_order", "pairwise_accuracy"),
         "order_edge_f1": _nested(metrics, "reading_order", "edge_f1"),
         "region_f1": _nested(metrics, "layout", "regions", "f1"),
@@ -172,9 +166,9 @@ def _comparison_html(rows: Iterable[Mapping[str, Any]]) -> str:
         status_class = "ok" if row.get("conformance") == "conformant" else "bad"
         body_rows.append(
             "<tr>"
-            f"<td class=\"rank\">{rank if rank is not None else '—'}</td>"
+            f'<td class="rank">{rank if rank is not None else "—"}</td>'
             f"<td><strong>{model}</strong><small>{subtitle}</small></td>"
-            f"<td><span class=\"badge {status_class}\">{html.escape(status)}</span></td>"
+            f'<td><span class="badge {status_class}">{html.escape(status)}</span></td>'
             f"<td>{_pct(row.get('line_gcer'))}</td>"
             f"<td>{_pct(row.get('page_order_gcer'))}</td>"
             f"<td>{_pct(row.get('base_letter_cer'))}</td>"
@@ -226,9 +220,7 @@ td small {{ display:block; color:var(--muted); white-space:normal; max-width:260
 </main></body></html>"""
 
 
-def write_comparison_artifacts(
-    report_root: str | Path, output_dir: str | Path
-) -> dict[str, Path]:
+def write_comparison_artifacts(report_root: str | Path, output_dir: str | Path) -> dict[str, Path]:
     """Write JSON, CSV and self-contained HTML comparison artifacts."""
 
     rows = collect_comparison_rows(report_root)

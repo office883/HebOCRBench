@@ -23,7 +23,32 @@ def test_oracle_layout_adapter_uses_images_but_not_gold_text(tmp_path):
     )
     assert seen_sizes
     assert predictions[0]["regions"][0]["lines"][0]["text"] == "פלט בדיקה"
-    assert predictions[0]["regions"][0]["lines"][0]["text"] != gold[0]["regions"][0]["lines"][0]["text"]
+    assert (
+        predictions[0]["regions"][0]["lines"][0]["text"]
+        != gold[0]["regions"][0]["lines"][0]["text"]
+    )
     assert predictions[0]["tables"] == []
     assert predictions[0]["form_fields"] == []
     assert predictions[0]["model"]["adapter"] == "tesseract_oracle_layout"
+
+
+def test_oracle_layout_custom_lambda_is_not_mistaken_for_default(tmp_path, monkeypatch):
+    dataset = generate_stress_suite(
+        tmp_path / "dataset", variants=("clean",), limit=1, include_structured=False
+    )
+    gold = load_jsonl(dataset.gold_path)
+
+    def unexpected_version_probe(executable):
+        raise AssertionError(f"custom recognizer must not probe {executable}")
+
+    monkeypatch.setattr(
+        "hebocrbench.adapters.tesseract.tesseract_version", unexpected_version_probe
+    )
+    assert (
+        run_tesseract_oracle_layout(
+            gold,
+            dataset_root=dataset.root,
+            recognizer=lambda image, language, psm: "פלט מותאם",
+        )[0]["model"]["version"]
+        == "custom"
+    )

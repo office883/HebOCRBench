@@ -95,46 +95,53 @@ def test_data_build_stats_audit_and_freeze_work_end_to_end(capsys, tmp_path):
     source = _source_root(tmp_path)
     output = tmp_path / "build"
 
-    assert main(
-        [
-            "data",
-            "build",
-            "--registry",
-            str(registry),
-            "--source",
-            "page-source",
-            "--source-root",
-            f"page-source={source}",
-            "--output",
-            str(output),
-            "--profile",
-            "cli-fixture",
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "data",
+                "build",
+                "--registry",
+                str(registry),
+                "--source",
+                "page-source",
+                "--source-root",
+                f"page-source={source}",
+                "--output",
+                str(output),
+                "--profile",
+                "cli-fixture",
+            ]
+        )
+        == 0
+    )
     build_payload = json.loads(capsys.readouterr().out)
     assert build_payload["page_count"] == 1
     assert len(build_payload["dataset_fingerprint"]) == 64
 
     stats_out = tmp_path / "stats-copy.json"
-    assert main(
-        ["data", "stats", "--gold", str(output / "gold.jsonl"), "--output", str(stats_out)]
-    ) == 0
+    assert (
+        main(["data", "stats", "--gold", str(output / "gold.jsonl"), "--output", str(stats_out)])
+        == 0
+    )
     capsys.readouterr()
     assert json.loads(stats_out.read_text(encoding="utf-8"))["pages"] == 1
 
     audit_out = tmp_path / "audit-copy.json"
-    assert main(
-        [
-            "data",
-            "audit",
-            "--gold",
-            str(output / "gold.jsonl"),
-            "--dataset-root",
-            str(output),
-            "--output",
-            str(audit_out),
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "data",
+                "audit",
+                "--gold",
+                str(output / "gold.jsonl"),
+                "--dataset-root",
+                str(output),
+                "--output",
+                str(audit_out),
+            ]
+        )
+        == 0
+    )
     capsys.readouterr()
     assert json.loads(audit_out.read_text(encoding="utf-8"))["is_valid"] is True
 
@@ -148,20 +155,23 @@ def test_data_build_rejects_unaccepted_research_source(capsys, tmp_path):
     registry = _registry(tmp_path / "registry.yaml", restricted=True)
     source = _source_root(tmp_path)
 
-    assert main(
-        [
-            "data",
-            "build",
-            "--registry",
-            str(registry),
-            "--source",
-            "page-source",
-            "--source-root",
-            f"page-source={source}",
-            "--output",
-            str(tmp_path / "build"),
-        ]
-    ) == 2
+    assert (
+        main(
+            [
+                "data",
+                "build",
+                "--registry",
+                str(registry),
+                "--source",
+                "page-source",
+                "--source-root",
+                f"page-source={source}",
+                "--output",
+                str(tmp_path / "build"),
+            ]
+        )
+        == 2
+    )
     payload = json.loads(capsys.readouterr().out)
     assert "acceptance" in payload["error"].lower()
 
@@ -191,13 +201,10 @@ def test_data_profiles_lists_official_machine_readable_profiles(capsys):
     ]
 
 
-
 def test_data_build_rejects_source_selection_that_does_not_match_named_profile(capsys, tmp_path):
     registry_path = _registry(tmp_path / "registry.yaml")
     registry_payload = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
-    registry_payload["sources"]["extra-source"] = dict(
-        registry_payload["sources"]["page-source"]
-    )
+    registry_payload["sources"]["extra-source"] = dict(registry_payload["sources"]["page-source"])
     registry_payload["sources"]["extra-source"]["title"] = "Extra CLI PAGE fixture"
     registry_path.write_text(
         yaml.safe_dump(registry_payload, allow_unicode=True, sort_keys=False),
@@ -227,28 +234,31 @@ def test_data_build_rejects_source_selection_that_does_not_match_named_profile(c
     )
     source = _source_root(tmp_path)
 
-    assert main(
-        [
-            "data",
-            "build",
-            "--registry",
-            str(registry_path),
-            "--profiles",
-            str(profiles_path),
-            "--profile",
-            "fixture-v1",
-            "--source",
-            "page-source",
-            "--source",
-            "extra-source",
-            "--source-root",
-            f"page-source={source}",
-            "--source-root",
-            f"extra-source={source}",
-            "--output",
-            str(tmp_path / "build"),
-        ]
-    ) == 2
+    assert (
+        main(
+            [
+                "data",
+                "build",
+                "--registry",
+                str(registry_path),
+                "--profiles",
+                str(profiles_path),
+                "--profile",
+                "fixture-v1",
+                "--source",
+                "page-source",
+                "--source",
+                "extra-source",
+                "--source-root",
+                f"page-source={source}",
+                "--source-root",
+                f"extra-source={source}",
+                "--output",
+                str(tmp_path / "build"),
+            ]
+        )
+        == 2
+    )
     payload = json.loads(capsys.readouterr().out)
     assert payload["error_type"] == "ProfileError"
     assert "profile_source_mismatch" in payload["error"]

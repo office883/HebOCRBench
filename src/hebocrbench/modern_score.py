@@ -82,8 +82,7 @@ def _component(
         "score": round(100.0 * normalized, 6),
         "normalized_score": round(normalized, 8),
         "inputs": {
-            name: {"value": round(value, 8), "weight": weight}
-            for name, value, weight in values
+            name: {"value": round(value, 8), "weight": weight} for name, value, weight in values
         },
     }
 
@@ -103,8 +102,6 @@ def _index_reports(reports: Sequence[Report]) -> dict[str, Report]:
     return indexed
 
 
-
-
 def _suite_failures(
     indexed: Mapping[str, Report],
     suite: ModernSuiteSpec,
@@ -116,7 +113,9 @@ def _suite_failures(
             failures.append({"track_id": track_id, "reason": "track missing from suite lock"})
             continue
         if not entry.headline:
-            failures.append({"track_id": track_id, "reason": "required track is not marked headline"})
+            failures.append(
+                {"track_id": track_id, "reason": "required track is not marked headline"}
+            )
         if entry.maturity != "certified":
             failures.append(
                 {
@@ -143,7 +142,9 @@ def _suite_failures(
             continue
         expected_entry = suite.tracks.get(track_id)
         if expected_entry is None:
-            failures.append({"track_id": track_id, "reason": "submitted track is absent from suite lock"})
+            failures.append(
+                {"track_id": track_id, "reason": "submitted track is absent from suite lock"}
+            )
             continue
         expected_common = {
             "suite_version": suite.suite_version,
@@ -185,9 +186,7 @@ def _contract_failures(indexed: Mapping[str, Report]) -> list[dict[str, str]]:
         try:
             spec = load_track(track_id)
         except TrackError as exc:
-            failures.append(
-                {"track_id": track_id, "field": "track_contract", "reason": str(exc)}
-            )
+            failures.append({"track_id": track_id, "field": "track_contract", "reason": str(exc)})
             continue
         observed_version = str(configuration.get("official_track_version", ""))
         observed_fingerprint = str(configuration.get("official_track_fingerprint", ""))
@@ -277,9 +276,7 @@ def _coverage_failures(indexed: Mapping[str, Report]) -> list[dict[str, object]]
         if gold_pages <= 0:
             failures.append({"track_id": track_id, "reason": "gold_pages must be positive"})
         if missing > 0 or matched != gold_pages:
-            failures.append(
-                {"track_id": track_id, "missing_prediction_pages": missing}
-            )
+            failures.append({"track_id": track_id, "missing_prediction_pages": missing})
     return failures
 
 
@@ -414,9 +411,7 @@ def _robustness_component(metrics: Mapping[str, Any]) -> dict[str, object]:
     )
 
 
-def _handwriting_summary(
-    report: Report | None, maturity: str | None = None
-) -> dict[str, object]:
+def _handwriting_summary(report: Report | None, maturity: str | None = None) -> dict[str, object]:
     if report is None:
         return {"status": "not_submitted", "score": None}
     metrics = _mapping(report.get("metrics"), "modern-handwriting-v1.metrics")
@@ -479,7 +474,9 @@ def combine_modern_track_reports(
     indexed = _index_reports(reports)
     missing = sorted(set(REQUIRED_PRINT_TRACKS) - set(indexed))
     suite = coerce_modern_suite_lock(suite_lock) if suite_lock is not None else None
-    forms_maturity = suite.tracks.get(FORMS_TRACK).maturity if suite and suite.tracks.get(FORMS_TRACK) else None
+    forms_maturity = (
+        suite.tracks.get(FORMS_TRACK).maturity if suite and suite.tracks.get(FORMS_TRACK) else None
+    )
     handwriting_maturity = (
         suite.tracks.get(HANDWRITING_TRACK).maturity
         if suite and suite.tracks.get(HANDWRITING_TRACK)

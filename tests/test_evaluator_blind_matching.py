@@ -79,9 +79,7 @@ def test_unmatched_prediction_edges_reduce_reading_order_precision():
     gold = _page()
     prediction = _page(ids=("pred-a", "pred-b"))
     prediction["regions"].append(_region("extra", 220, 320, "זחט", 2))
-    prediction["reading_order"] = {
-        "edges": [["pred-a", "pred-b"], ["pred-b", "extra"]]
-    }
+    prediction["reading_order"] = {"edges": [["pred-a", "pred-b"], ["pred-b", "extra"]]}
 
     result = evaluate_page(gold, prediction, config=_blind_config())
 

@@ -57,7 +57,9 @@ def topological_order(
     return order
 
 
-def transitive_precedence(nodes: Sequence[str], edges: Iterable[Sequence[str]]) -> set[tuple[str, str]]:
+def transitive_precedence(
+    nodes: Sequence[str], edges: Iterable[Sequence[str]]
+) -> set[tuple[str, str]]:
     edge_set = _edge_tuples(edges)
     outgoing: dict[str, set[str]] = defaultdict(set)
     for before, after in edge_set:
@@ -102,7 +104,11 @@ def reading_order_metrics(
     pred_position = {node: index for index, node in enumerate(pred_order)}
     correct_pairs = 0
     for before, after in gold_precedence:
-        if before in pred_position and after in pred_position and pred_position[before] < pred_position[after]:
+        if (
+            before in pred_position
+            and after in pred_position
+            and pred_position[before] < pred_position[after]
+        ):
             correct_pairs += 1
     pairwise_accuracy = correct_pairs / max(1, len(gold_precedence))
     return {

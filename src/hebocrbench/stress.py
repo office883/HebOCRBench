@@ -11,15 +11,21 @@ from dataclasses import dataclass
 from hashlib import sha256
 from importlib import resources
 from io import BytesIO
-import json
 import os
 from pathlib import Path
 import random
 import subprocess
 import unicodedata
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, __version__ as PILLOW_VERSION
+from PIL import (
+    Image,
+    ImageDraw,
+    ImageEnhance,
+    ImageFilter,
+    ImageFont,
+    __version__ as PILLOW_VERSION,
+)
 import yaml
 
 from .io import sha256_file, write_json, write_jsonl
@@ -72,7 +78,9 @@ def discover_hebrew_font(explicit: str | Path | None = None) -> Path:
             text=True,
             timeout=5,
         )
-        candidates.extend(Path(line.strip()) for line in completed.stdout.splitlines() if line.strip())
+        candidates.extend(
+            Path(line.strip()) for line in completed.stdout.splitlines() if line.strip()
+        )
     except (FileNotFoundError, subprocess.SubprocessError):
         pass
 
@@ -80,9 +88,7 @@ def discover_hebrew_font(explicit: str | Path | None = None) -> Path:
         if not candidate.is_file():
             continue
         try:
-            font = ImageFont.truetype(
-                str(candidate), size=36, layout_engine=ImageFont.Layout.RAQM
-            )
+            font = ImageFont.truetype(str(candidate), size=36, layout_engine=ImageFont.Layout.RAQM)
             # This is not a complete glyph-coverage test, but it rejects files
             # that cannot even render a representative Hebrew cluster.
             if font.getbbox("שָׁלוֹם"):
@@ -122,9 +128,7 @@ def load_stress_cases(path: str | Path | None = None) -> list[dict[str, Any]]:
 
 
 def _load_font(font_path: Path, size: int) -> ImageFont.FreeTypeFont:
-    return ImageFont.truetype(
-        str(font_path), size=size, layout_engine=ImageFont.Layout.RAQM
-    )
+    return ImageFont.truetype(str(font_path), size=size, layout_engine=ImageFont.Layout.RAQM)
 
 
 def _text_bbox(
@@ -135,9 +139,7 @@ def _text_bbox(
     direction: str = "rtl",
     language: str = "he",
 ) -> tuple[int, int, int, int]:
-    return draw.textbbox(
-        (0, 0), text, font=font, direction=direction, language=language
-    )
+    return draw.textbbox((0, 0), text, font=font, direction=direction, language=language)
 
 
 def _fit_font(
@@ -153,9 +155,7 @@ def _fit_font(
 ) -> ImageFont.FreeTypeFont:
     for size in range(start_size, min_size - 1, -2):
         font = _load_font(font_path, size)
-        left, top, right, bottom = _text_bbox(
-            draw, text, font, direction="rtl", language=language
-        )
+        left, top, right, bottom = _text_bbox(draw, text, font, direction="rtl", language=language)
         if right - left <= max_width and bottom - top <= max_height:
             return font
     return _load_font(font_path, min_size)
@@ -267,13 +267,13 @@ def _metadata(
     }
 
 
-def _line_card_base(
-    case: Mapping[str, Any], font_path: Path
-) -> tuple[Image.Image, dict[str, Any]]:
+def _line_card_base(case: Mapping[str, Any], font_path: Path) -> tuple[Image.Image, dict[str, Any]]:
     width, height = 1800, 420
     image = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(image)
-    draw.rounded_rectangle((24, 24, width - 24, height - 24), radius=18, outline=(215, 215, 215), width=2)
+    draw.rounded_rectangle(
+        (24, 24, width - 24, height - 24), radius=18, outline=(215, 215, 215), width=2
+    )
     text = str(case["text"])
     language = str(case.get("language", "he"))
     font = _fit_font(
@@ -470,7 +470,9 @@ def _form_base(font_path: Path) -> tuple[Image.Image, dict[str, Any]]:
     for index, (field_id, label, value) in enumerate(fields, start=1):
         top = 235 + (index - 1) * 220
         bottom = top + 150
-        draw.rounded_rectangle((110, top, width - 110, bottom), radius=12, outline=(80, 80, 80), width=2)
+        draw.rounded_rectangle(
+            (110, top, width - 110, bottom), radius=12, outline=(80, 80, 80), width=2
+        )
         _draw_rtl(draw, (width - 145, (top + bottom) / 2), f"{label}:", body_font)
         draw.text(
             (930, (top + bottom) / 2),

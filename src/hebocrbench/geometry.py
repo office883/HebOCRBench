@@ -30,14 +30,18 @@ class GeometryMatchResult:
 
     @property
     def precision(self) -> float:
-        return 1.0 if self.prediction_count == 0 and self.gold_count == 0 else len(self.matches) / max(
-            1, self.prediction_count
+        return (
+            1.0
+            if self.prediction_count == 0 and self.gold_count == 0
+            else len(self.matches) / max(1, self.prediction_count)
         )
 
     @property
     def recall(self) -> float:
-        return 1.0 if self.gold_count == 0 and self.prediction_count == 0 else len(self.matches) / max(
-            1, self.gold_count
+        return (
+            1.0
+            if self.gold_count == 0 and self.prediction_count == 0
+            else len(self.matches) / max(1, self.gold_count)
         )
 
     @property

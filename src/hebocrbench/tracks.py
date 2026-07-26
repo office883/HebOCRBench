@@ -7,7 +7,7 @@ import hashlib
 from importlib import resources
 import json
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Mapping
 
 import yaml
 
@@ -94,9 +94,7 @@ def _parse_track_bytes(data: bytes, filename: str) -> TrackSpec:
         values[key] = value
     expected_filename = values["id"] + ".yaml"
     if Path(filename).name != expected_filename:
-        raise TrackError(
-            f"Track ID {values['id']} does not match filename {Path(filename).name}"
-        )
+        raise TrackError(f"Track ID {values['id']} does not match filename {Path(filename).name}")
     config_payload = {key: value for key, value in raw.items() if key != "track"}
     config_payload.setdefault("schema_version", str(raw.get("schema_version", "1.0")))
     benchmark_config = BenchmarkConfig.from_mapping(config_payload)
@@ -212,7 +210,9 @@ def verify_track_lock(directory: str | Path | None = None) -> TrackLockReport:
         except (OSError, json.JSONDecodeError) as exc:
             return TrackLockReport(False, "unknown", 0, (str(exc),))
         expected = lock.get("tracks", {}) if isinstance(lock, Mapping) else {}
-        specs = {load_track(path).track_id: load_track(path) for path in sorted(root.glob("*.yaml"))}
+        specs = {
+            load_track(path).track_id: load_track(path) for path in sorted(root.glob("*.yaml"))
+        }
     if not isinstance(expected, Mapping):
         return TrackLockReport(False, "unknown", 0, ("tracks lock has no mapping",))
     if set(expected) != set(specs):

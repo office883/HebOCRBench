@@ -8,7 +8,7 @@ import hashlib
 from importlib import resources
 import json
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import Mapping, Sequence
 import unicodedata
 
 from jsonschema import Draft202012Validator
@@ -207,7 +207,9 @@ def _semantic_validate(
     for record in records:
         page_id = str(record.get("page_id", ""))
         if page_id in seen_pages:
-            report.add("error", "duplicate_page_id", f"Duplicate page_id {page_id}", page_id=page_id)
+            report.add(
+                "error", "duplicate_page_id", f"Duplicate page_id {page_id}", page_id=page_id
+            )
         seen_pages.add(page_id)
         image = record.get("image", {}) if gold else {}
         width = int(image.get("width", 0)) if isinstance(image, Mapping) else 0

@@ -176,9 +176,7 @@ def bidi_hygiene(text: str) -> dict[str, object]:
     bidi_positions = [i for i, ch in enumerate(text) if ch in BIDI_CONTROLS]
     zero_width_positions = [i for i, ch in enumerate(text) if ch in ZERO_WIDTH_CONTROLS]
     replacement_positions = [i for i, ch in enumerate(text) if ch == "\ufffd"]
-    private_use_positions = [
-        i for i, ch in enumerate(text) if unicodedata.category(ch) == "Co"
-    ]
+    private_use_positions = [i for i, ch in enumerate(text) if unicodedata.category(ch) == "Co"]
 
     embedding_depth = 0
     unbalanced_embeddings = 0

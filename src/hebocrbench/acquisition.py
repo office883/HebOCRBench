@@ -108,7 +108,10 @@ def _safe_member_path(name: str, destination: Path) -> Path:
     target = destination.joinpath(*pure.parts)
     resolved_destination = destination.resolve()
     resolved_target = target.resolve(strict=False)
-    if resolved_target != resolved_destination and resolved_destination not in resolved_target.parents:
+    if (
+        resolved_target != resolved_destination
+        and resolved_destination not in resolved_target.parents
+    ):
         raise AcquisitionError(f"Archive contains unsafe path: {name!r}")
     return target
 
@@ -200,7 +203,6 @@ def safe_extract(
     raise AcquisitionError(f"Unsupported archive type: {kind}")
 
 
-
 def _tree_sha256(root: Path) -> tuple[str, int]:
     """Hash a checkout by relative path and file content, excluding VCS metadata."""
 
@@ -266,7 +268,10 @@ def _verify_git_checkout(target: Path, artifact: CorpusArtifact) -> VerifiedArti
         raise AcquisitionError(f"Incomplete Git cache for {artifact.artifact_id}: {target}")
     marker = json.loads(marker_path.read_text(encoding="utf-8"))
     actual_revision = _run_git(["rev-parse", "HEAD"], cwd=target)
-    if marker.get("requested_revision") != artifact.revision or marker.get("resolved_revision") != actual_revision:
+    if (
+        marker.get("requested_revision") != artifact.revision
+        or marker.get("resolved_revision") != actual_revision
+    ):
         raise ChecksumMismatchError(
             f"Git revision mismatch for {artifact.artifact_id}: requested {artifact.revision}, "
             f"cached {actual_revision}"

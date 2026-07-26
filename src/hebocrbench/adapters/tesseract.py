@@ -104,12 +104,15 @@ def run_tesseract_oracle_layout(
     """Recognize every gold line crop and return prediction-schema records."""
 
     root = Path(dataset_root)
+    use_default_recognizer = recognizer is None
     if recognizer is None:
-        recognizer = lambda image, language, mode: recognize_with_tesseract(
-            image, language, mode, executable=executable
-        )
+
+        def default_recognizer(image: Image.Image, language: str, mode: int) -> str:
+            return recognize_with_tesseract(image, language, mode, executable=executable)
+
+        recognizer = default_recognizer
     predictions: list[dict[str, Any]] = []
-    version = tesseract_version(executable) if recognizer.__name__ == "<lambda>" else "custom"
+    version = tesseract_version(executable) if use_default_recognizer else "custom"
     for page in gold_pages:
         image_meta = page.get("image", {})
         rotation = int(image_meta.get("rotation_degrees", 0))

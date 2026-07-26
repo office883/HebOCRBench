@@ -20,8 +20,9 @@ import platform
 import re
 import sys
 import tarfile
-import tomllib
 from typing import Iterable, Mapping
+
+from ._toml import TOMLDecodeError, loads as toml_loads
 import zipfile
 
 
@@ -53,9 +54,9 @@ class ReleasePackagingError(ValueError):
 
 def _project(project_root: Path) -> Mapping[str, object]:
     try:
-        payload = tomllib.loads((project_root / "pyproject.toml").read_text(encoding="utf-8"))
+        payload = toml_loads((project_root / "pyproject.toml").read_text(encoding="utf-8"))
         project = payload["project"]
-    except (OSError, KeyError, tomllib.TOMLDecodeError) as exc:
+    except (OSError, KeyError, TOMLDecodeError) as exc:
         raise ReleasePackagingError(f"Cannot load project metadata: {exc}") from exc
     if not isinstance(project, Mapping):
         raise ReleasePackagingError("[project] must be a mapping")
@@ -198,7 +199,9 @@ def build_wheel(project_root: str | Path, output_dir: str | Path) -> Path:
     temporary = wheel_path.with_suffix(wheel_path.suffix + ".tmp")
     temporary.unlink(missing_ok=True)
     try:
-        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        with zipfile.ZipFile(
+            temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
+        ) as archive:
             for member_name in sorted(members):
                 executable = member_name.endswith(".py") and member_name.startswith("hebocrbench/")
                 _write_zip_member(archive, member_name, members[member_name], executable=executable)
@@ -254,7 +257,9 @@ def build_source_zip(project_root: str | Path, output_dir: str | Path) -> Path:
     temporary = archive_path.with_suffix(archive_path.suffix + ".tmp")
     temporary.unlink(missing_ok=True)
     try:
-        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        with zipfile.ZipFile(
+            temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
+        ) as archive:
             for path in sorted(files, key=lambda item: item.relative_to(root).as_posix()):
                 relative = path.relative_to(root).as_posix()
                 executable = relative.startswith("scripts/") and path.suffix == ".py"
@@ -289,7 +294,9 @@ def build_source_tar_gz(project_root: str | Path, output_dir: str | Path) -> Pat
     try:
         with temporary.open("wb") as raw:
             with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as compressed:
-                with tarfile.open(mode="w", fileobj=compressed, format=tarfile.PAX_FORMAT) as archive:
+                with tarfile.open(
+                    mode="w", fileobj=compressed, format=tarfile.PAX_FORMAT
+                ) as archive:
                     for path in files:
                         relative = path.relative_to(root).as_posix()
                         payload = path.read_bytes()
@@ -318,7 +325,9 @@ def _distribution_license(distribution_name: str) -> tuple[str | None, str | Non
         distribution = metadata.distribution(distribution_name)
     except metadata.PackageNotFoundError:
         return None, None
-    license_name = distribution.metadata.get("License-Expression") or distribution.metadata.get("License")
+    license_name = distribution.metadata.get("License-Expression") or distribution.metadata.get(
+        "License"
+    )
     return distribution.version, license_name
 
 

@@ -137,7 +137,10 @@ def test_build_corpus_materializes_real_sources_with_manifest_attribution_and_au
 
     assert result.page_count == 2
     assert result.audit.is_valid
-    assert result.dataset_fingerprint == json.loads((output / "manifest.json").read_text())["dataset_fingerprint"]
+    assert (
+        result.dataset_fingerprint
+        == json.loads((output / "manifest.json").read_text())["dataset_fingerprint"]
+    )
     assert (output / "gold.jsonl").exists()
     assert (output / "stats.json").exists()
     assert (output / "audit.json").exists()
@@ -155,7 +158,9 @@ def test_build_corpus_materializes_real_sources_with_manifest_attribution_and_au
     }
     assert all((output / record["image"]["path"]).is_file() for record in records)
     assert all(record["image"].get("sha256") for record in records)
-    assert all(not Path(record["metadata"]["source_annotation_path"]).is_absolute() for record in records)
+    assert all(
+        not Path(record["metadata"]["source_annotation_path"]).is_absolute() for record in records
+    )
 
     second = build_corpus(
         registry,
@@ -265,7 +270,9 @@ def test_build_corpus_accepts_locked_modern_pdf_manifests(tmp_path, monkeypatch,
         },
     }
     registry_path = tmp_path / "registry-modern.yaml"
-    registry_path.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    registry_path.write_text(
+        yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
     registry = load_registry(registry_path)
     source_root = tmp_path / "modern-public"
     (source_root / "manifests").mkdir(parents=True)
@@ -281,23 +288,27 @@ def test_build_corpus_accepts_locked_modern_pdf_manifests(tmp_path, monkeypatch,
         record["split"] = "train"
         record["track"] = "modern_page_ocr"
         record["image"]["path"] = "images/modern-public/page.png"
-        record["image"]["sha256"] = __import__("hashlib").sha256(image_path.read_bytes()).hexdigest()
-        record["metadata"].update({
-            "source_id": context.source_id,
-            "source_version": context.source_version,
-            "source_url": context.source_url,
-            "rights_uri": context.rights_uri,
-            "redistribution": context.redistribution,
-            "citation_key": context.citation_key,
-            "license": context.license_expression,
-            "source_annotation_path": "manifests/doc.json",
-            "source_page_id": "manifests/doc.json#page=1",
-            "source_image_path": "images/modern-public/page.png",
-            "document_id_method": "locked_modern_pdf_manifest_v1",
-            "template_family": "fixture-template",
-            "era": "modern",
-            "script_style": "modern_square_print",
-        })
+        record["image"]["sha256"] = (
+            __import__("hashlib").sha256(image_path.read_bytes()).hexdigest()
+        )
+        record["metadata"].update(
+            {
+                "source_id": context.source_id,
+                "source_version": context.source_version,
+                "source_url": context.source_url,
+                "rights_uri": context.rights_uri,
+                "redistribution": context.redistribution,
+                "citation_key": context.citation_key,
+                "license": context.license_expression,
+                "source_annotation_path": "manifests/doc.json",
+                "source_page_id": "manifests/doc.json#page=1",
+                "source_image_path": "images/modern-public/page.png",
+                "document_id_method": "locked_modern_pdf_manifest_v1",
+                "template_family": "fixture-template",
+                "era": "modern",
+                "script_style": "modern_square_print",
+            }
+        )
         return [record]
 
     monkeypatch.setattr("hebocrbench.corpus_builder.convert_modern_pdf_manifest", fake_converter)

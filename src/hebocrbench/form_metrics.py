@@ -30,7 +30,9 @@ def evaluate_form(
     for field_id, pred_field in pred.items():
         if field_id not in gold:
             alignments.append(
-                align_sequences([], graphemes(normalize_strict(str(pred_field.get("value_text", "")))))
+                align_sequences(
+                    [], graphemes(normalize_strict(str(pred_field.get("value_text", ""))))
+                )
             )
     merged = merge_alignments(alignments)
     return {

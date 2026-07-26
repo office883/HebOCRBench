@@ -49,7 +49,9 @@ def convert_hf_image_text_manifest(
     metadata.update(
         {
             "source_item_id": item_id,
-            "source_manifest_sha256": __import__("hashlib").sha256(manifest.read_bytes()).hexdigest(),
+            "source_manifest_sha256": __import__("hashlib")
+            .sha256(manifest.read_bytes())
+            .hexdigest(),
         }
     )
     return {

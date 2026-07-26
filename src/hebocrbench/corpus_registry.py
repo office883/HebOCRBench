@@ -7,7 +7,7 @@ from importlib import resources
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Mapping
 
 import yaml
 
@@ -130,7 +130,9 @@ def _parse_checksum(value: object, location: str) -> ArtifactChecksum | None:
     expected_lengths = {"md5": 32, "sha256": 64, "sha512": 128}
     if algorithm not in expected_lengths:
         raise RegistryError(f"{location}.algorithm is unsupported: {algorithm}")
-    if len(digest) != expected_lengths[algorithm] or any(ch not in "0123456789abcdef" for ch in digest):
+    if len(digest) != expected_lengths[algorithm] or any(
+        ch not in "0123456789abcdef" for ch in digest
+    ):
         raise RegistryError(f"{location}.value is not a valid {algorithm} checksum")
     return ArtifactChecksum(algorithm=algorithm, value=digest)
 
@@ -149,7 +151,9 @@ def _parse_artifacts(value: object, source_id: str, *, core: bool) -> tuple[Corp
         if core and immutable_download and checksum is None:
             raise RegistryError(f"{location} requires a checksum for a core artifact")
         if core and url.startswith("git+") and not revision:
-            raise RegistryError(f"{location} requires an immutable revision for a core Git artifact")
+            raise RegistryError(
+                f"{location} requires an immutable revision for a core Git artifact"
+            )
         artifacts.append(
             CorpusArtifact(
                 artifact_id=_require_text(item, "artifact_id", location),
@@ -194,7 +198,11 @@ def load_registry(path: str | Path | None = None) -> CorpusRegistry:
     if path is None:
         source_label = "package:data/corpus-registry.yaml"
         try:
-            text = resources.files("hebocrbench").joinpath("data/corpus-registry.yaml").read_text(encoding="utf-8")
+            text = (
+                resources.files("hebocrbench")
+                .joinpath("data/corpus-registry.yaml")
+                .read_text(encoding="utf-8")
+            )
         except OSError as exc:
             raise RegistryError(f"Cannot load registry {source_label}: {exc}") from exc
     else:
@@ -235,7 +243,9 @@ def load_registry(path: str | Path | None = None) -> CorpusRegistry:
             citation=dict(_require_mapping(item.get("citation"), f"sources.{source_id}.citation")),
             license=license_spec,
             artifacts=_parse_artifacts(item.get("artifacts", []), source_id, core=status == "core"),
-            discovery=dict(_require_mapping(item.get("discovery"), f"sources.{source_id}.discovery")),
+            discovery=dict(
+                _require_mapping(item.get("discovery"), f"sources.{source_id}.discovery")
+            ),
             split=dict(_require_mapping(item.get("split"), f"sources.{source_id}.split")),
             metadata=dict(_require_mapping(item.get("metadata"), f"sources.{source_id}.metadata")),
         )

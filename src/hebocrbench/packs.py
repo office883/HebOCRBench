@@ -153,7 +153,9 @@ def _copy_schemas(schema_root: Path, participant: Path) -> list[str]:
     return [path.name for path in schemas]
 
 
-def _oracle_layout_view(record: Mapping[str, object], public_page_id: str, image: Mapping[str, object]) -> dict[str, object]:
+def _oracle_layout_view(
+    record: Mapping[str, object], public_page_id: str, image: Mapping[str, object]
+) -> dict[str, object]:
     regions: list[dict[str, object]] = []
     for raw_region in record.get("regions", []):  # type: ignore[assignment]
         if not isinstance(raw_region, Mapping):
@@ -201,7 +203,9 @@ def _oracle_layout_view(record: Mapping[str, object], public_page_id: str, image
     }
 
 
-def _blind_view(record: Mapping[str, object], public_page_id: str, image: Mapping[str, object]) -> dict[str, object]:
+def _blind_view(
+    record: Mapping[str, object], public_page_id: str, image: Mapping[str, object]
+) -> dict[str, object]:
     return {
         "schema_version": "1.0",
         "page_id": public_page_id,
@@ -257,9 +261,7 @@ def _write_pack_lock(
     lock_name: str,
 ) -> str:
     files = _inventory(root, excluded={lock_name})
-    fingerprint = _pack_fingerprint(
-        role=role, dataset_fingerprint=dataset_fingerprint, files=files
-    )
+    fingerprint = _pack_fingerprint(role=role, dataset_fingerprint=dataset_fingerprint, files=files)
     write_json(
         root / lock_name,
         {
@@ -594,10 +596,7 @@ def verify_benchmark_packs(
         raise PackVerificationError("test page identifiers are not opaque v1 identifiers")
     if not (blind_ids == oracle_ids == gold_ids == map_ids):
         raise PackVerificationError("participant, organizer and identifier-map page order differ")
-    if any(
-        not PUBLIC_DOCUMENT_ID.fullmatch(str(item.get("document_id", "")))
-        for item in gold
-    ):
+    if any(not PUBLIC_DOCUMENT_ID.fullmatch(str(item.get("document_id", ""))) for item in gold):
         raise PackVerificationError("organizer gold contains non-opaque test document identifiers")
     if any(item.get("split") != "test" for item in gold):
         raise PackVerificationError("organizer gold contains a non-test record")
@@ -623,7 +622,9 @@ def verify_benchmark_packs(
         for key in ("original_page_id", "original_document_id"):
             original = str(item.get(key, ""))
             if original and original in participant_text:
-                raise PackVerificationError(f"original test identifier leaked into participant pack: {key}")
+                raise PackVerificationError(
+                    f"original test identifier leaked into participant pack: {key}"
+                )
 
     participant_fingerprint, participant_dataset = _verify_lock(
         participant, "PACK-LOCK.json", "participant"

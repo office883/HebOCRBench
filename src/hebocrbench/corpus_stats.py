@@ -79,11 +79,15 @@ def compute_corpus_stats(records: Sequence[Mapping[str, object]]) -> dict[str, o
             grapheme_count += len(graphemes(text))
             words += len(regex.findall(r"\S+", text))
             hebrew_letters += sum(is_hebrew_letter(character) for character in text)
-            combining_marks += sum(unicodedata.category(character).startswith("M") for character in text)
+            combining_marks += sum(
+                unicodedata.category(character).startswith("M") for character in text
+            )
             hebrew_punctuation += sum(character in HEBREW_PUNCTUATION for character in text)
             mixed_bidi_lines += int(_mixed_bidi(text))
             numeric_runs += len(regex.findall(r"\p{N}+(?:[.,:/-]\p{N}+)*", text))
-            latin_runs += len(regex.findall(r"\p{Script=Latin}+(?:[-._]\p{Script=Latin}|[-._\d])*", text))
+            latin_runs += len(
+                regex.findall(r"\p{Script=Latin}+(?:[-._]\p{Script=Latin}|[-._\d])*", text)
+            )
             character_counts.update(text)
 
     return {

@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 from statistics import mean
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 from .alignment import AlignmentResult, error_rate, merge_alignments
 from .bidi_metrics import (
@@ -26,7 +26,6 @@ from .diacritics import (
     merge_diacritic_evaluations,
 )
 from .form_metrics import evaluate_form
-from .geometry import match_geometries
 from .matching import match_units, remap_prediction_graph
 from .reading_order import ReadingOrderCycleError, reading_order_metrics, topological_order
 from .statistics import bootstrap_document_intervals, quantile
@@ -214,8 +213,7 @@ def _combine_geometry(page_results: Sequence[Mapping[str, Any]]) -> dict[str, An
     recall = 1.0 if gold == pred == 0 else matched / max(1, gold)
     f1 = 0.0 if precision + recall == 0 else 2 * precision * recall / (precision + recall)
     weighted_iou_num = sum(
-        float(item.get("mean_iou", 0.0)) * int(item.get("matched", 0))
-        for item in page_results
+        float(item.get("mean_iou", 0.0)) * int(item.get("matched", 0)) for item in page_results
     )
     return {
         "gold_count": gold,
@@ -458,8 +456,7 @@ def evaluate_page(
             str(region.get("region_id", "")) for region in _ordered_regions(prediction)
         ]
         pred_edges = [
-            [pred_ordered_ids[i], pred_ordered_ids[i + 1]]
-            for i in range(len(pred_ordered_ids) - 1)
+            [pred_ordered_ids[i], pred_ordered_ids[i + 1]] for i in range(len(pred_ordered_ids) - 1)
         ]
     remapped_nodes, remapped_edges, remap_evidence = remap_prediction_graph(
         prediction_nodes=pred_region_ids,
@@ -474,7 +471,6 @@ def evaluate_page(
     )
     order["assignment"] = region_assignment.to_dict()
     order["remap"] = remap_evidence
-
 
     table_result = _evaluate_tables(gold, prediction)
     form_result = evaluate_form(
@@ -587,11 +583,7 @@ def _aggregate_page_group(pages: Sequence[PageEvaluation]) -> dict[str, Any]:
 
 
 def _aggregate_tables(pages: Sequence[PageEvaluation]) -> dict[str, Any]:
-    per_table = [
-        table
-        for page in pages
-        for table in page.metrics["tables"].get("per_table", [])
-    ]
+    per_table = [table for page in pages for table in page.metrics["tables"].get("per_table", [])]
     if not per_table:
         return {
             "gold_tables": 0,
@@ -600,9 +592,7 @@ def _aggregate_tables(pages: Sequence[PageEvaluation]) -> dict[str, Any]:
             "cell_span_f1": 1.0,
             "grid_slot_accuracy": 1.0,
         }
-    merged = merge_alignments(
-        [_alignment_from_dict(item["text_alignment"]) for item in per_table]
-    )
+    merged = merge_alignments([_alignment_from_dict(item["text_alignment"]) for item in per_table])
     return {
         "gold_tables": sum(int(page.metrics["tables"].get("gold_tables", 0)) for page in pages),
         "prediction_tables": sum(
@@ -619,13 +609,10 @@ def _aggregate_forms(pages: Sequence[PageEvaluation]) -> dict[str, Any]:
     pred = sum(int(page.metrics["forms"]["prediction_fields"]) for page in pages)
     matched = sum(int(page.metrics["forms"]["matched_fields"]) for page in pages)
     exact_num = sum(
-        float(page.metrics["forms"]["value_exact_rate"])
-        * int(page.metrics["forms"]["gold_fields"])
+        float(page.metrics["forms"]["value_exact_rate"]) * int(page.metrics["forms"]["gold_fields"])
         for page in pages
     )
-    alignments = [
-        _alignment_from_dict(page.metrics["forms"]["value_alignment"]) for page in pages
-    ]
+    alignments = [_alignment_from_dict(page.metrics["forms"]["value_alignment"]) for page in pages]
     merged = merge_alignments(alignments)
     precision = 1.0 if gold == pred == 0 else matched / max(1, pred)
     recall = 1.0 if gold == pred == 0 else matched / max(1, gold)
@@ -642,9 +629,7 @@ def _aggregate_forms(pages: Sequence[PageEvaluation]) -> dict[str, Any]:
     }
 
 
-def _conformance_gate(
-    pages: Sequence[PageEvaluation], config: BenchmarkConfig
-) -> dict[str, Any]:
+def _conformance_gate(pages: Sequence[PageEvaluation], config: BenchmarkConfig) -> dict[str, Any]:
     threshold = config.conformance
     diagnostic = [page for page in pages if page.track == threshold.diagnostic_track]
     if not diagnostic:
@@ -721,6 +706,7 @@ def _conformance_gate(
         },
     }
 
+
 def _aggregate_operational(pages: Sequence[PageEvaluation]) -> dict[str, Any]:
     timings = [
         float(page.metrics["operational"]["timing_ms"])
@@ -796,9 +782,7 @@ def evaluate_dataset(
     for page in pages:
         per_document[page.document_id].append(page)
     macro_page = (
-        mean(float(page.metrics["recognition"]["line_gcer"]) for page in pages)
-        if pages
-        else 0.0
+        mean(float(page.metrics["recognition"]["line_gcer"]) for page in pages) if pages else 0.0
     )
     macro_document = (
         mean(
@@ -827,17 +811,14 @@ def evaluate_dataset(
         "page_order_cer": error_rate(page_codepoint),
         "page_order_gcer": error_rate(page_grapheme),
         "page_order_wer": error_rate(page_word),
-        "reading_order_penalty_gcer": error_rate(page_grapheme)
-        - error_rate(grapheme_alignment),
+        "reading_order_penalty_gcer": error_rate(page_grapheme) - error_rate(grapheme_alignment),
         "page_exact_rate": sum(item.exact for item in page_evals) / max(1, len(page_evals)),
         "macro_page_line_gcer": macro_page,
         "macro_document_line_gcer": macro_document,
         "grapheme_substitution_rate": grapheme_alignment.substitutions
         / max(1, grapheme_alignment.n_ref),
-        "grapheme_deletion_rate": grapheme_alignment.deletions
-        / max(1, grapheme_alignment.n_ref),
-        "grapheme_insertion_rate": grapheme_alignment.insertions
-        / max(1, grapheme_alignment.n_ref),
+        "grapheme_deletion_rate": grapheme_alignment.deletions / max(1, grapheme_alignment.n_ref),
+        "grapheme_insertion_rate": grapheme_alignment.insertions / max(1, grapheme_alignment.n_ref),
         "final_letter_confusions": sum(item.final_letter_confusions for item in line_evals),
         "alignments": {name: value.to_dict() for name, value in alignments.items()},
     }
@@ -867,10 +848,7 @@ def evaluate_dataset(
         ):
             bidi_sums[key] += int(page.metrics["bidi"].get(key, 0))
     bidi_line_count = sum(
-        1
-        for page in pages
-        for detail in page.details["line_results"]
-        if detail["reference"]
+        1 for page in pages for detail in page.details["line_results"] if detail["reference"]
     )
     bidi = {
         **dict(bidi_sums),
@@ -907,12 +885,8 @@ def evaluate_dataset(
         )
         for page in pages
     )
-    comparable = sum(
-        int(page.metrics["reading_order"]["comparable_pairs"]) for page in pages
-    )
-    correct_pairs = sum(
-        int(page.metrics["reading_order"]["correct_pairs"]) for page in pages
-    )
+    comparable = sum(int(page.metrics["reading_order"]["comparable_pairs"]) for page in pages)
+    correct_pairs = sum(int(page.metrics["reading_order"]["correct_pairs"]) for page in pages)
     edge_precision = edge_correct / max(1, pred_edges)
     edge_recall = edge_correct / max(1, gold_edges)
     reading = {

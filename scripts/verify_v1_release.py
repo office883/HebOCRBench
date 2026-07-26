@@ -17,7 +17,11 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib
 from typing import Mapping, Sequence
 import zipfile
 
@@ -106,7 +110,11 @@ def _verify_record(archive: zipfile.ZipFile) -> tuple[bool, list[str]]:
         if not digest.startswith("sha256="):
             errors.append(f"Unsupported RECORD digest for {name}: {digest}")
         else:
-            actual = base64.urlsafe_b64encode(hashlib.sha256(payload).digest()).rstrip(b"=").decode("ascii")
+            actual = (
+                base64.urlsafe_b64encode(hashlib.sha256(payload).digest())
+                .rstrip(b"=")
+                .decode("ascii")
+            )
             if digest.split("=", 1)[1] != actual:
                 errors.append(f"RECORD hash mismatch: {name}")
         if size != str(len(payload)):
@@ -131,15 +139,33 @@ def _static_checks(root: Path) -> list[dict[str, object]]:
     )
 
     pairs = [
-        (root / "corpora" / "registry.yaml", root / "src" / "hebocrbench" / "data" / "corpus-registry.yaml"),
-        (root / "corpora" / "registry.lock.json", root / "src" / "hebocrbench" / "data" / "corpus-registry.lock.json"),
-        (root / "corpora" / "profiles.yaml", root / "src" / "hebocrbench" / "data" / "corpus-profiles.yaml"),
-        (root / "corpora" / "profiles.lock.json", root / "src" / "hebocrbench" / "data" / "corpus-profiles.lock.json"),
+        (
+            root / "corpora" / "registry.yaml",
+            root / "src" / "hebocrbench" / "data" / "corpus-registry.yaml",
+        ),
+        (
+            root / "corpora" / "registry.lock.json",
+            root / "src" / "hebocrbench" / "data" / "corpus-registry.lock.json",
+        ),
+        (
+            root / "corpora" / "profiles.yaml",
+            root / "src" / "hebocrbench" / "data" / "corpus-profiles.yaml",
+        ),
+        (
+            root / "corpora" / "profiles.lock.json",
+            root / "src" / "hebocrbench" / "data" / "corpus-profiles.lock.json",
+        ),
         (root / "benchmark.yaml", root / "src" / "hebocrbench" / "data" / "benchmark.yaml"),
         (root / "data" / "sources.yaml", root / "src" / "hebocrbench" / "data" / "sources.yaml"),
         (root / "data" / "profiles.yaml", root / "src" / "hebocrbench" / "data" / "profiles.yaml"),
-        (root / "data" / "stress_cases.yaml", root / "src" / "hebocrbench" / "data" / "stress_cases.yaml"),
-        (root / "tracks" / "tracks.lock.json", root / "src" / "hebocrbench" / "data" / "tracks" / "tracks.lock.json"),
+        (
+            root / "data" / "stress_cases.yaml",
+            root / "src" / "hebocrbench" / "data" / "stress_cases.yaml",
+        ),
+        (
+            root / "tracks" / "tracks.lock.json",
+            root / "src" / "hebocrbench" / "data" / "tracks" / "tracks.lock.json",
+        ),
     ]
     for left, right in pairs:
         passed = left.is_file() and right.is_file() and left.read_bytes() == right.read_bytes()
@@ -150,7 +176,13 @@ def _static_checks(root: Path) -> list[dict[str, object]]:
         path.name: _sha256(path)
         for path in sorted((root / "src" / "hebocrbench" / "schemas").glob("*.json"))
     }
-    checks.append(_check("schema_sync", root_schemas == package_schemas, {"root": root_schemas, "package": package_schemas}))
+    checks.append(
+        _check(
+            "schema_sync",
+            root_schemas == package_schemas,
+            {"root": root_schemas, "package": package_schemas},
+        )
+    )
 
     fonts = [
         path.relative_to(root).as_posix()
@@ -175,7 +207,13 @@ def _static_checks(root: Path) -> list[dict[str, object]]:
             and lock.get("registry_fingerprint") == registry.fingerprint
             and set(lock.get("sources", {})) == set(registry.sources)
         )
-        checks.append(_check("registry_lock", lock_ok, {"lock": lock.get("registry_fingerprint"), "actual": registry.fingerprint}))
+        checks.append(
+            _check(
+                "registry_lock",
+                lock_ok,
+                {"lock": lock.get("registry_fingerprint"), "actual": registry.fingerprint},
+            )
+        )
     except Exception as exc:
         checks.append(_check("registry_lock", False, str(exc)))
 
@@ -207,7 +245,9 @@ def _static_checks(root: Path) -> list[dict[str, object]]:
     return checks
 
 
-def _verify_wheel(root: Path, wheel: Path, commands: list[dict[str, object]]) -> list[dict[str, object]]:
+def _verify_wheel(
+    root: Path, wheel: Path, commands: list[dict[str, object]]
+) -> list[dict[str, object]]:
     checks: list[dict[str, object]] = []
     expected_name = f"hebocrbench-{EXPECTED_VERSION}-py3-none-any.whl"
     checks.append(_check("wheel_name", wheel.name == expected_name, wheel.name))
@@ -232,7 +272,9 @@ def _verify_wheel(root: Path, wheel: Path, commands: list[dict[str, object]]) ->
                 f"hebocrbench-{EXPECTED_VERSION}.dist-info/METADATA",
             }
             checks.append(_check("wheel_crc", bad is None, bad))
-            checks.append(_check("wheel_required_members", required <= names, sorted(required - names)))
+            checks.append(
+                _check("wheel_required_members", required <= names, sorted(required - names))
+            )
             checks.append(_check("wheel_record", record_ok, record_errors))
             bundled_fonts = sorted(name for name in names if name.lower().endswith(FONT_SUFFIXES))
             checks.append(_check("wheel_no_fonts", not bundled_fonts, bundled_fonts))
@@ -247,7 +289,16 @@ def _verify_wheel(root: Path, wheel: Path, commands: list[dict[str, object]]) ->
         commands.append(
             _run(
                 "wheel_install",
-                [sys.executable, "-m", "pip", "install", "--no-deps", "--target", str(target), str(wheel)],
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--no-deps",
+                    "--target",
+                    str(target),
+                    str(wheel),
+                ],
                 cwd=outside,
             )
         )
@@ -284,7 +335,15 @@ def _verify_wheel(root: Path, wheel: Path, commands: list[dict[str, object]]) ->
         commands.append(
             _run(
                 "wheel_cli_registry",
-                [sys.executable, "-m", "hebocrbench", "data", "list", "--source", "modern-public-documents-v1"],
+                [
+                    sys.executable,
+                    "-m",
+                    "hebocrbench",
+                    "data",
+                    "list",
+                    "--source",
+                    "modern-public-documents-v1",
+                ],
                 cwd=outside,
                 env=env,
             )
@@ -308,7 +367,13 @@ def _verify_source_zip(source_zip: Path) -> list[dict[str, object]]:
             names = archive.namelist()
             checks.append(_check("source_zip_crc", bad is None, bad))
             expected_prefix = f"HebOCRBench-v{EXPECTED_VERSION}/"
-            checks.append(_check("source_zip_prefix", bool(names) and all(name.startswith(expected_prefix) for name in names), expected_prefix))
+            checks.append(
+                _check(
+                    "source_zip_prefix",
+                    bool(names) and all(name.startswith(expected_prefix) for name in names),
+                    expected_prefix,
+                )
+            )
             forbidden = [
                 name
                 for name in names
@@ -350,15 +415,9 @@ def _verify_source_tar_gz(source_tar_gz: Path) -> list[dict[str, object]]:
                 or name.lower().endswith(FONT_SUFFIXES)
             ]
             unsafe = [
-                name
-                for name in names
-                if Path(name).is_absolute() or ".." in Path(name).parts
+                name for name in names if Path(name).is_absolute() or ".." in Path(name).parts
             ]
-            special = [
-                member.name
-                for member in members
-                if not (member.isfile() or member.isdir())
-            ]
+            special = [member.name for member in members if not (member.isfile() or member.isdir())]
             checks.append(_check("source_tar_clean", not forbidden, forbidden[:50]))
             checks.append(_check("source_tar_safe_paths", not unsafe, unsafe[:50]))
             checks.append(_check("source_tar_regular_members", not special, special[:50]))
@@ -461,9 +520,7 @@ def verify(
         checks.extend(_verify_source_tar_gz(source_tar_gz.resolve()))
 
     required_commands_ok = all(
-        command.get("passed") is True
-        for command in commands
-        if command.get("required", True)
+        command.get("passed") is True for command in commands if command.get("required", True)
     )
     static_ok = all(check["passed"] for check in checks)
     return {
@@ -476,9 +533,13 @@ def verify(
         "commands": commands,
         "artifacts": {
             "wheel": str(wheel.resolve()) if wheel is not None else None,
-            "wheel_sha256": _sha256(wheel.resolve()) if wheel is not None and wheel.is_file() else None,
+            "wheel_sha256": _sha256(wheel.resolve())
+            if wheel is not None and wheel.is_file()
+            else None,
             "source_zip": str(source_zip.resolve()) if source_zip is not None else None,
-            "source_zip_sha256": _sha256(source_zip.resolve()) if source_zip is not None and source_zip.is_file() else None,
+            "source_zip_sha256": _sha256(source_zip.resolve())
+            if source_zip is not None and source_zip.is_file()
+            else None,
             "source_tar_gz": str(source_tar_gz.resolve()) if source_tar_gz is not None else None,
             "source_tar_gz_sha256": (
                 _sha256(source_tar_gz.resolve())
