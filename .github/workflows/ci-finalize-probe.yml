@@ -1,0 +1,86 @@
+name: Capture finalized CI repair tree
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/ci-finalize-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/modern-hebrew-sota-v1-20260725
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Reconstruct and apply exact repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch="$RUNNER_TEMP/hebocr-ci-repair.patch"
+          cat tools/ci-clean.b64.part* | base64 --decode > "$patch"
+          printf '%s  %s\n' \
+            '1c4a7329253345f713a5cb165e99b50f4364eb9d0371a152c95951bb1ec59ffc' \
+            "$patch" | sha256sum --check --strict
+          git apply --check "$patch"
+          git apply "$patch"
+          python -m pip install --disable-pip-version-check 'ruff==0.15.22'
+          python -m ruff check . --fix --exit-zero
+          python -m ruff format .
+          python -m ruff check .
+          python -m ruff format --check .
+
+      - name: Remove all transport and diagnostic files from final tree
+        shell: bash
+        run: |
+          rm -f \
+            .github/ci-repair-trigger \
+            .github/workflows/ci-repair.yml \
+            .github/workflows/ci-patch-probe.yml \
+            .github/workflows/ci-finalize-probe.yml \
+            tools/ci-repair.patch \
+            tools/ci-repair-extra.patch \
+            tools/ci-clean.b64.part*
+
+      - name: Capture exact final patch and Git diagnostics
+        shell: bash
+        run: |
+          set +e
+          report=/tmp/finalize-report.txt
+          exec > >(tee "$report") 2>&1
+          git config user.name 'HebOCRBench CI repair'
+          git config user.email 'actions@users.noreply.github.com'
+          git add --all
+          git diff --cached --binary --full-index > /tmp/finalized.patch
+          sha256sum /tmp/finalized.patch | tee /tmp/finalized.patch.sha256
+          git diff --cached --check
+          echo "diff_check=$?"
+          git commit -m 'fix: restore Python 3.10 and Ruff CI'
+          echo "commit_status=$?"
+          git push --dry-run origin HEAD:agent/modern-hebrew-sota-v1-20260725
+          echo "push_dry_run_status=$?"
+          git show --stat --oneline --decorate --summary HEAD
+          exit 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: finalized-ci-repair
+          path: |
+            /tmp/finalize-report.txt
+            /tmp/finalized.patch
+            /tmp/finalized.patch.sha256
+          if-no-files-found: error
+          retention-days: 7
