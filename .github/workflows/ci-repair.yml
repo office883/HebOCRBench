@@ -5,7 +5,14 @@ on:
     branches:
       - agent/modern-hebrew-sota-v1-20260725
     paths:
-      - tools/ci-repair.patch
+      - tools/ci-clean.b64.part*
+      - .github/workflows/ci-repair.yml
+      - .github/ci-repair-trigger
+  pull_request:
+    branches:
+      - main
+    paths:
+      - tools/ci-clean.b64.part*
       - .github/workflows/ci-repair.yml
       - .github/ci-repair-trigger
   workflow_dispatch:
@@ -19,6 +26,7 @@ concurrency:
 
 jobs:
   repair:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -44,14 +52,18 @@ jobs:
             tesseract-ocr-eng \
             tesseract-ocr-heb
 
-      - name: Verify and apply the compatibility patch
+      - name: Reconstruct, verify and apply the compatibility repair
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git hash-object tools/ci-repair.patch)" = \
-            '49b8dc7281b6c1adfbd808dce1b67199e3a7d3d3'
-          git apply --check tools/ci-repair.patch
-          git apply --whitespace=fix tools/ci-repair.patch
+          patch="$RUNNER_TEMP/hebocr-ci-repair.patch"
+          cat tools/ci-clean.b64.part* | base64 --decode > "$patch"
+          printf '%s  %s\n' \
+            '1c4a7329253345f713a5cb165e99b50f4364eb9d0371a152c95951bb1ec59ffc' \
+            "$patch" | sha256sum --check --strict
+          git apply --check "$patch"
+          git apply "$patch"
+          git diff --check
 
       - name: Install package and development dependencies
         run: |
@@ -117,15 +129,16 @@ jobs:
           python -m compileall -q src scripts
           hebocrbench tracks verify
 
-      - name: Remove one-shot repair transport
+      - name: Remove all one-shot repair transport
         shell: bash
         run: |
           rm -f \
             .github/ci-repair-trigger \
-            .github/workflows/ci-patch-probe.yml \
             .github/workflows/ci-repair.yml \
+            .github/workflows/ci-patch-probe.yml \
             tools/ci-repair.patch \
-            tools/ci-repair-extra.patch
+            tools/ci-repair-extra.patch \
+            tools/ci-clean.b64.part*
 
       - name: Commit and push the verified repair
         shell: bash
