@@ -1,8 +1,9 @@
-name: Capture finalized CI repair tree
+name: Finalize verified CI repair
 
 on:
-  pull_request:
-    branches: [main]
+  push:
+    branches:
+      - agent/modern-hebrew-sota-v1-20260725
     paths:
       - .github/workflows/ci-finalize-probe.yml
   workflow_dispatch:
@@ -10,23 +11,49 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ci-finalize-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  capture:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+  finalize:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out the exact PR branch
+        uses: actions/checkout@v4
         with:
           ref: agent/modern-hebrew-sota-v1-20260725
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - name: Capture the guarded remote head
+        id: guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="$(git rev-parse HEAD)"
+          remote="$(git ls-remote origin refs/heads/agent/modern-hebrew-sota-v1-20260725 | awk '{print $1}')"
+          test -n "$remote"
+          test "$remote" = "$expected"
+          echo "expected=$expected" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
         with:
           python-version: '3.13'
           cache: pip
 
-      - name: Reconstruct and apply exact repair
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            fonts-noto-core \
+            poppler-utils \
+            tesseract-ocr \
+            tesseract-ocr-eng \
+            tesseract-ocr-heb
+
+      - name: Reconstruct and apply the exact repair
         shell: bash
         run: |
           set -euo pipefail
@@ -36,16 +63,49 @@ jobs:
             '1c4a7329253345f713a5cb165e99b50f4364eb9d0371a152c95951bb1ec59ffc' \
             "$patch" | sha256sum --check --strict
           git apply --check "$patch"
-          git apply "$patch"
-          python -m pip install --disable-pip-version-check 'ruff==0.15.22'
+          git apply --whitespace=fix "$patch"
+          git diff --check
+
+      - name: Install package and development dependencies on Python 3.13
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev,bidi,corpus]'
+
+      - name: Apply deterministic Ruff fixes and formatting
+        shell: bash
+        run: |
+          set -euo pipefail
           python -m ruff check . --fix --exit-zero
           python -m ruff format .
           python -m ruff check .
           python -m ruff format --check .
+          git diff --check
 
-      - name: Remove all transport and diagnostic files from final tree
+      - name: Verify the repaired tree on Python 3.13
+        run: |
+          python -m pytest -q
+          python -m compileall -q src scripts
+          hebocrbench tracks verify
+          hebocrbench sanity --output /tmp/hebocr-sanity-313 --variants clean --limit 28
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+
+      - name: Verify the repaired tree on Python 3.10
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev,bidi,corpus]'
+          python -m pytest -q
+          python -m compileall -q src scripts
+          hebocrbench tracks verify
+
+      - name: Remove every one-shot transport and diagnostic file
         shell: bash
         run: |
+          set -euo pipefail
           rm -f \
             .github/ci-repair-trigger \
             .github/workflows/ci-repair.yml \
@@ -54,33 +114,19 @@ jobs:
             tools/ci-repair.patch \
             tools/ci-repair-extra.patch \
             tools/ci-clean.b64.part*
+          git diff --check
 
-      - name: Capture exact final patch and Git diagnostics
+      - name: Commit and push atomically
         shell: bash
+        env:
+          EXPECTED_REMOTE_HEAD: ${{ steps.guard.outputs.expected }}
         run: |
-          set +e
-          report=/tmp/finalize-report.txt
-          exec > >(tee "$report") 2>&1
+          set -euo pipefail
           git config user.name 'HebOCRBench CI repair'
           git config user.email 'actions@users.noreply.github.com'
           git add --all
-          git diff --cached --binary --full-index > /tmp/finalized.patch
-          sha256sum /tmp/finalized.patch | tee /tmp/finalized.patch.sha256
           git diff --cached --check
-          echo "diff_check=$?"
           git commit -m 'fix: restore Python 3.10 and Ruff CI'
-          echo "commit_status=$?"
-          git push --dry-run origin HEAD:agent/modern-hebrew-sota-v1-20260725
-          echo "push_dry_run_status=$?"
-          git show --stat --oneline --decorate --summary HEAD
-          exit 0
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: finalized-ci-repair
-          path: |
-            /tmp/finalize-report.txt
-            /tmp/finalized.patch
-            /tmp/finalized.patch.sha256
-          if-no-files-found: error
-          retention-days: 7
+          git push \
+            --force-with-lease=refs/heads/agent/modern-hebrew-sota-v1-20260725:$EXPECTED_REMOTE_HEAD \
+            origin HEAD:refs/heads/agent/modern-hebrew-sota-v1-20260725
