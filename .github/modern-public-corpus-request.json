@@ -1,7 +1,8 @@
 {
   "schema_version": "1.0",
-  "requested_at": "2026-07-26",
-  "purpose": "HebOCRBench Modern Hebrew v1 release gate",
+  "requested_at": "2026-07-26T13:08:00+03:00",
+  "attempt": 2,
+  "purpose": "HebOCRBench Modern Hebrew v1 release gate after reusable form-pattern repair",
   "targets": {
     "documents": 100,
     "pages": 500,
