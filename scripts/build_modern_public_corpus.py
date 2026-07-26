@@ -59,7 +59,7 @@ DEFAULT_ENTITIES = (
 HEBREW_RE = re.compile(r"[\u05D0-\u05EA]")
 LATIN_RE = re.compile(r"[A-Za-z]")
 NUMBER_RE = re.compile(r"\d")
-FORM_PATTERNS = (
+FORM_PATTERNS = tuple(
     re.compile(pattern)
     for pattern in (
         r"\bטופס\b",
