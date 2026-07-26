@@ -28,17 +28,16 @@ on:
         description: Minimum selected pages containing Hebrew with Latin or numbers
         required: true
         default: '100'
-  pull_request:
-    branches: [main]
+  push:
     paths:
-      - .github/workflows/modern-public-corpus.yml
+      - .github/modern-public-corpus-request.json
 
 permissions:
   contents: read
 
 concurrency:
   group: modern-public-corpus-v1
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   materialize:
@@ -69,58 +68,40 @@ jobs:
           python -m pip install -e '.[corpus]'
 
       - name: Materialize and audit source snapshot
+        id: materialize
+        continue-on-error: true
         shell: bash
         run: |
           set +e
+          root="$RUNNER_TEMP/modern-public-documents-v1"
+          log="$RUNNER_TEMP/modern-public-materialize.log"
           python scripts/build_modern_public_corpus.py \
-            --output "$RUNNER_TEMP/modern-public-documents-v1" \
+            --output "$root" \
             --target-documents "$TARGET_DOCUMENTS" \
             --target-pages "$TARGET_PAGES" \
             --maximum-records-per-entity "$MAXIMUM_RECORDS_PER_ENTITY" \
             --minimum-table-pages "$MINIMUM_TABLE_PAGES" \
             --minimum-form-pages "$MINIMUM_FORM_PAGES" \
             --minimum-mixed-bidi-pages "$MINIMUM_MIXED_BIDI_PAGES" \
-            --overwrite \
-            2>&1 | tee "$RUNNER_TEMP/materialize.log"
+            --overwrite 2>&1 | tee "$log"
           status=${PIPESTATUS[0]}
-          printf '%s\n' "$status" > "$RUNNER_TEMP/materialize.status"
+          printf '%s\n' "$status" > "$RUNNER_TEMP/modern-public-materialize.status"
           exit 0
-
-      - name: Summarize partial or complete evidence
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          root="$RUNNER_TEMP/modern-public-documents-v1"
-          if [[ -s "$root/evidence/summary.json" ]]; then
-            python - "$root" <<'PY'
-          import collections, json, sys
-          from pathlib import Path
-          root = Path(sys.argv[1])
-          summary = json.loads((root / 'evidence' / 'summary.json').read_text(encoding='utf-8'))
-          rejections_path = root / 'evidence' / 'rejections.json'
-          rejections = json.loads(rejections_path.read_text(encoding='utf-8')) if rejections_path.is_file() else []
-          reasons = collections.Counter(item.get('reason', 'unknown').split(':', 1)[0] for item in rejections)
-          print(json.dumps({'summary': summary, 'rejection_classes': reasons}, ensure_ascii=False, indent=2, sort_keys=True))
-          PY
-          else
-            echo 'No summary.json was produced.'
-          fi
-          echo "materializer_exit=$(cat "$RUNNER_TEMP/materialize.status")"
 
       - name: Upload materialization diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hebocrbench-modern-public-documents-v1-diagnostics
+          name: hebocrbench-modern-public-diagnostics
           path: |
-            ${{ runner.temp }}/materialize.log
-            ${{ runner.temp }}/materialize.status
+            ${{ runner.temp }}/modern-public-materialize.log
+            ${{ runner.temp }}/modern-public-materialize.status
             ${{ runner.temp }}/modern-public-documents-v1/.hebocrbench-source.json
             ${{ runner.temp }}/modern-public-documents-v1/SOURCE_INVENTORY.json
             ${{ runner.temp }}/modern-public-documents-v1/SOURCE_EVIDENCE.json
             ${{ runner.temp }}/modern-public-documents-v1/evidence/*.json
           if-no-files-found: warn
+          include-hidden-files: true
           compression-level: 9
           retention-days: 14
 
@@ -128,11 +109,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          status="$(cat "$RUNNER_TEMP/materialize.status")"
-          if [[ "$status" != '0' ]]; then
-            echo "Materializer exited with status $status" >&2
-            exit "$status"
-          fi
+          test "$(cat "$RUNNER_TEMP/modern-public-materialize.status")" = '0'
 
       - name: Verify source snapshot evidence
         shell: bash
