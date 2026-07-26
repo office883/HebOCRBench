@@ -1,0 +1,86 @@
+name: Repair reusable Modern Hebrew form patterns
+
+on:
+  push:
+    branches:
+      - agent/modern-hebrew-sota-v1-20260725
+    paths:
+      - .github/workflows/form-patterns-repair.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: form-patterns-repair-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out exact branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/modern-hebrew-sota-v1-20260725
+          fetch-depth: 0
+
+      - name: Guard remote branch identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$(git rev-parse HEAD)"
+          git fetch origin agent/modern-hebrew-sota-v1-20260725
+          test "$(git rev-parse origin/agent/modern-hebrew-sota-v1-20260725)" = "$base"
+          echo "BASE_SHA=$base" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install deterministic test stack
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            fonts-noto-core \
+            poppler-utils \
+            tesseract-ocr \
+            tesseract-ocr-eng \
+            tesseract-ocr-heb
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev,bidi,corpus]'
+
+      - name: Verify and apply regression repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' \
+            '1f426ffcc72da323b8fe3fa3958f058ac6eb668ff9eb9ba67587b3990f1dad5a' \
+            tools/form-patterns-repair.patch | sha256sum --check --strict
+          git apply --check tools/form-patterns-repair.patch
+          git apply tools/form-patterns-repair.patch
+          python -m pytest -q tests/test_modern_public_materializer.py
+          python -m pytest -q
+          python -m ruff check .
+          python -m ruff format --check .
+          python -m compileall -q src scripts
+          git diff --check
+
+      - name: Commit verified source repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm tools/form-patterns-repair.patch
+          git config user.name 'HebOCRBench form-pattern repair'
+          git config user.email 'actions@users.noreply.github.com'
+          git add --all
+          git diff --cached --check
+          git commit -m 'fix: reuse form detectors across all corpus pages'
+          git fetch origin agent/modern-hebrew-sota-v1-20260725
+          remote="$(git rev-parse origin/agent/modern-hebrew-sota-v1-20260725)"
+          test "$remote" = "$BASE_SHA"
+          git push \
+            --force-with-lease=refs/heads/agent/modern-hebrew-sota-v1-20260725:$BASE_SHA \
+            origin HEAD:refs/heads/agent/modern-hebrew-sota-v1-20260725
