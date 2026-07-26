@@ -1,0 +1,77 @@
+diff --git a/scripts/build_modern_public_corpus.py b/scripts/build_modern_public_corpus.py
+index 8a96346..cde0339 100755
+--- a/scripts/build_modern_public_corpus.py
++++ b/scripts/build_modern_public_corpus.py
+@@ -287,10 +287,15 @@ def _preflight_pages(
+     maximum_pages: int,
+     minimum_agreement: float,
+     dpi: int,
+-) -> tuple[list[int], dict[int, Mapping[str, object]]]:
++) -> tuple[
++    list[int],
++    dict[int, Mapping[str, object]],
++    list[dict[str, object]],
++]:
+     ranked = rank_page_candidates(evidence, maximum=min(len(evidence), maximum_pages * 3))
+     accepted: list[int] = []
+     accepted_records: dict[int, Mapping[str, object]] = {}
++    rejected_pages: list[dict[str, object]] = []
+     context = _context(candidate)
+     with tempfile.TemporaryDirectory(prefix="hebocrbench-modern-preflight-") as temporary:
+         root = Path(temporary)
+@@ -308,13 +313,20 @@ def _preflight_pages(
+                     min_hebrew_letters=120,
+                     min_hebrew_ratio=0.50,
+                 )
+-            except (ModernPdfError, OSError, ValueError):
++            except (ModernPdfError, OSError, ValueError) as exc:
++                rejected_pages.append(
++                    {
++                        "page_number": page_number,
++                        "error_type": type(exc).__name__,
++                        "reason": str(exc),
++                    }
++                )
+                 continue
+             accepted.append(page_number)
+             accepted_records[page_number] = record
+             if len(accepted) >= maximum_pages:
+                 break
+-    return sorted(accepted), accepted_records
++    return sorted(accepted), accepted_records, rejected_pages
+ 
+ 
+ def _json_write(path: Path, value: object) -> None:
+@@ -357,6 +369,7 @@ def materialize(args: argparse.Namespace) -> dict[str, object]:
+                 continue
+             catalog_snapshot.append(dict(candidate["catalog_record"]))
+             document_id = str(candidate["document_id"])
++            preflight_rejections: list[dict[str, object]] = []
+             try:
+                 pdf_bytes = _http_bytes(str(candidate["pdf_url"]), timeout=args.timeout)
+                 if not pdf_bytes.startswith(b"%PDF"):
+@@ -377,7 +390,7 @@ def materialize(args: argparse.Namespace) -> dict[str, object]:
+                 usable = [item for item in page_evidence if bool(item["usable"])]
+                 if not usable:
+                     raise MaterializationError("no usable Modern Hebrew text-layer pages")
+-                accepted_page_numbers, records = _preflight_pages(
++                accepted_page_numbers, records, preflight_rejections = _preflight_pages(
+                     pdf_path,
+                     candidate,
+                     usable,
+@@ -471,6 +484,7 @@ def materialize(args: argparse.Namespace) -> dict[str, object]:
+                         "catalog_table": entity,
+                         "catalog_record_id": candidate["catalog_record_id"],
+                         "source_url": candidate["pdf_url"],
++                        "rejected_candidate_pages": preflight_rejections,
+                     }
+                 )
+                 seen_pdf_hashes.add(pdf_hash)
+@@ -497,6 +511,7 @@ def materialize(args: argparse.Namespace) -> dict[str, object]:
+                         "catalog_record_id": candidate["catalog_record_id"],
+                         "pdf_url": candidate["pdf_url"],
+                         "reason": f"{type(exc).__name__}: {exc}",
++                        "page_rejections": preflight_rejections,
+                     }
+                 )
+                 (output / "pdfs" / f"{document_id}.pdf").unlink(missing_ok=True)
