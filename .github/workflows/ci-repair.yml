@@ -56,9 +56,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s  %s\n' \
-            '1fec8a39b5be97bf75c8e3336bf396b5c4521c7688c3e6fb8a02f5e41967cce8' \
-            'tools/ci-repair.patch' | sha256sum --check --strict
+          actual="$(git hash-object tools/ci-repair.patch)"
+          test "$actual" = '49b8dc7281b6c1adfbd808dce1b67199e3a7d3d3'
           git apply --check tools/ci-repair.patch
           git apply tools/ci-repair.patch
 
