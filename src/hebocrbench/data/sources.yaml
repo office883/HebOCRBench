@@ -1,0 +1,144 @@
+schema_version: "1.0"
+sources:
+  modern_bidi_diagnostic:
+    name: HebOCRBench Modern Hebrew Unicode and BiDi Diagnostic Suite
+    version: "1.0.0"
+    task: diagnostic
+    languages: [he, en]
+    script: Hebr
+    role: diagnostic
+    status: bundled
+    format: HebOCRBench JSONL + PNG
+    primary_score: true
+    landing_page: bundled://hebocrbench/modern-bidi-v1
+    downloads:
+      - kind: bundled
+        url: bundled://hebocrbench/modern-bidi-v1
+    license:
+      expression: CC0-1.0
+      class: bundled
+      authority: HebOCRBench release
+      requires_acceptance: false
+      attribution: HebOCRBench contributors
+      restrictions: []
+      conflicts: []
+    expected:
+      minimum_cases: 60
+      logical_order: true
+      mixed_bidi: true
+    split_policy: diagnostic-only; all cases remain in the conformance split
+    importer: bundled
+    notes:
+      - Synthetic conformance evidence only; never used as a substitute for real-document OCR.
+      - Biblical cantillation, Yiddish-only characters and historical material are rejected from official gold.
+
+  modern_public_documents:
+    name: Contemporary Hebrew Public Documents
+    version: "2026-07-26-v1"
+    task: page_ocr
+    languages: [he, en]
+    script: Hebr
+    role: core
+    status: api
+    format: PDF + independently verified logical text layer
+    primary_score: true
+    landing_page: https://knesset.gov.il/Odata/ParliamentInfo.svc/
+    downloads:
+      - kind: api
+        url: https://knesset.gov.il/Odata/ParliamentInfo.svc/
+        revision: "2026-07-26-v1"
+    license:
+      expression: LicenseRef-Israeli-Public-Documents
+      class: per_item
+      authority: Knesset Open Data record and source PDF metadata retained per document
+      requires_acceptance: false
+      attribution: The Knesset and the originating Israeli public body, retained per manifest
+      restrictions:
+        - Source documents retain their original public-sector notices.
+        - Direct mirroring is performed only when the item-level record permits it; otherwise acquisition remains federated.
+      conflicts: []
+    expected:
+      minimum_documents: 100
+      minimum_pages: 500
+      minimum_template_families: 50
+      minimum_table_pages: 50
+      minimum_form_pages: 20
+      minimum_mixed_bidi_pages: 100
+    split_policy: template-family-disjoint deterministic split; source revisions and PDF hashes are frozen
+    importer: modern_pdf
+    citations:
+      - https://knesset.gov.il/Odata/ParliamentInfo.svc/
+    notes:
+      - Only contemporary pages passing dual-extractor agreement and Modern Hebrew scope validation are admitted.
+      - Pages with empty, contradictory or visually ordered text layers are rejected rather than repaired silently.
+
+  modern_print_lines_development:
+    name: Hebrew OCR Corpus Modern Print Lines Development Subset
+    version: ce4d1c347bd4e8b98a23f23256b0ecf01fa663c5
+    task: line_recognition
+    languages: [he, en]
+    script: Hebr
+    role: supplemental
+    status: available
+    format: WebDataset image/text pairs
+    primary_score: false
+    landing_page: https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-corpus
+    downloads:
+      - kind: git
+        url: https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-corpus
+        revision: ce4d1c347bd4e8b98a23f23256b0ecf01fa663c5
+    license:
+      expression: MIXED-PER-SAMPLE
+      class: per_item
+      authority: Per-sample provenance and rights_status fields in the locked dataset revision
+      requires_acceptance: false
+      attribution: Per-sample source metadata retained in every benchmark record
+      restrictions:
+        - Development and baseline-training support only; not an official hidden test source.
+      conflicts: []
+    expected:
+      train: 93068
+      validation: 5320
+      test: 5701
+      granularity: line
+    split_policy: preserve leakage-resistant upstream curation_group_id splits
+    importer: hf_image_text
+    notes:
+      - Only the modern_print_lines configuration is selected.
+      - Biblical, historical and non-Hebrew configurations are excluded.
+
+  modern_handwriting_lines:
+    name: Hebrew HTR Curated v1 Modern Human Handwriting Holdout
+    version: ec4c7074ce2b3edc79889b00319e200d129eecf7
+    task: line_recognition
+    languages: [he]
+    script: Hebr
+    role: supplemental
+    status: available
+    format: Parquet image/text rows
+    primary_score: false
+    landing_page: https://huggingface.co/datasets/ssdataanalysis/hebrew-htr-curated-v1
+    downloads:
+      - kind: git
+        url: https://huggingface.co/datasets/ssdataanalysis/hebrew-htr-curated-v1
+        revision: ec4c7074ce2b3edc79889b00319e200d129eecf7
+    license:
+      expression: MIXED-PER-SOURCE
+      class: per_item
+      authority: curation_manifest.json and upstream source metadata in the locked dataset revision
+      requires_acceptance: false
+      attribution: Per-source attribution retained in the curated dataset metadata
+      restrictions:
+        - Reported only as a separate Modern Hebrew handwriting extension.
+        - Never blended into the printed-document headline score.
+      conflicts: []
+    expected:
+      human_train: 5473
+      human_validation: 575
+      human_test: 964
+      writer_disjoint: true
+      text_overlap_train_test: 0
+    split_policy: preserve writer-disjoint upstream stage3_human_finetune split
+    importer: hf_image_text
+    notes:
+      - Real human handwriting only for official evaluation; synthetic handwriting is training support, not benchmark gold.

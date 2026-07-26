@@ -1,0 +1,35 @@
+schema_version: '1.0'
+track:
+  id: modern-forms-v1
+  version: 1.0.0
+  title: Modern Hebrew closed-schema form extraction
+  description: Diagnostic form-field presence and exact value transcription without shared region IDs.
+  official: true
+  task: form-extraction
+  prediction_mode: closed-schema-form
+  accepted_gold_tracks: [modern_forms]
+  required_prediction_fields: [page_id, form_fields]
+  primary_metrics:
+    - forms.field_presence_f1
+    - forms.value_gcer
+    - forms.value_exact_rate
+matching:
+  use_shared_ids: false
+  line_iou_threshold: 0.30
+  region_iou_threshold: 0.50
+conformance:
+  diagnostic_track: modern_bidi
+  min_exact_line_rate: 0.98
+  min_ltr_run_exact_rate: 0.99
+  min_numeric_exact_rate: 0.995
+  min_bracket_exact_rate: 0.995
+  max_visual_order_failure_count: 0
+  max_bidi_control_count: 0
+  max_unbalanced_bidi_controls: 0
+statistics:
+  bootstrap_samples: 2000
+  confidence: 0.95
+  seed: 20260725
+  worst_page_count: 25
+  worst_slice_min_pages: 10
+slice_fields: [metadata.document_type, metadata.template_family, metadata.form_family]

@@ -1,0 +1,218 @@
+schema_version: '1.0'
+registry_version: 1.0.0
+benchmark: HebOCRBench
+sources:
+  modern-bidi-diagnostic-v1:
+    title: HebOCRBench Modern Hebrew Unicode and BiDi diagnostic suite
+    version: 1.0.0
+    task: conformance
+    track: modern_bidi
+    languages:
+    - he
+    - en
+    script: Hebr
+    status: diagnostic
+    converter: none
+    homepage: urn:hebocrbench:modern-bidi:1.0.0
+    citation:
+      key: hebocrbench-modern-bidi-v1
+      text: HebOCRBench contributors. Modern Hebrew Unicode and BiDi diagnostic suite, version 1.0.0.
+    license:
+      spdx: CC0-1.0
+      tier: bundled
+      redistribution: allowed
+      requires_acceptance: false
+      uri: https://creativecommons.org/publicdomain/zero/1.0/
+      authority: HebOCRBench 1.0 release
+    artifacts: []
+    discovery:
+      annotation_globs:
+      - gold.jsonl
+      image_roots:
+      - images
+      exclude_globs: []
+      split_from_path: false
+    split:
+      strategy: fixed
+      group_fields:
+      - document_id
+      ratios:
+        diagnostic: 1.0
+      seed: 20260725
+    metadata:
+      script_style: modern_square_print
+      era: modern
+      document_type: diagnostic_card
+      layout_type: mixed
+      vocalization: mixed
+      source_type: benchmark_generated
+    notes: Diagnostic-only. It tests logical Unicode order and never substitutes for real-document evaluation.
+  modern-public-documents-v1:
+    title: Contemporary Hebrew Public Documents
+    version: 2026-07-26-v1
+    task: page_ocr
+    track: modern_page_ocr
+    languages:
+    - he
+    - en
+    script: Hebr
+    status: core
+    converter: modern-pdf
+    homepage: https://knesset.gov.il/Odata/ParliamentInfo.svc/
+    citation:
+      key: hebocrbench-modern-public-documents-v1
+      text: HebOCRBench contributors. Revision-locked contemporary Hebrew public-document snapshot derived from
+        Knesset Open Data and source PDFs.
+    license:
+      spdx: LicenseRef-Israeli-Public-Documents
+      tier: external-review
+      redistribution: federated-only
+      requires_acceptance: false
+      uri: https://www.knesset.gov.il/
+      authority: Knesset Open Data records and the source PDF attached to each manifest
+      conflicts:
+      - Source documents retain their own public-sector notices; HebOCRBench distributes manifests, hashes and acquisition
+        recipes unless direct mirroring is explicitly allowed.
+    artifacts:
+    - artifact_id: knesset-open-data-api
+      url: api+https://knesset.gov.il/Odata/ParliamentInfo.svc/
+      filename: modern-public-documents-20260725-v1
+      archive: none
+      revision: 2026-07-26-v1
+    discovery:
+      annotation_globs:
+      - manifests/*.json
+      image_roots:
+      - pdfs
+      exclude_globs: []
+      split_from_path: false
+    split:
+      strategy: hash_group
+      group_fields:
+      - metadata.template_family
+      ratios:
+        train: 0.7
+        dev: 0.15
+        test: 0.15
+      seed: 20260725
+    metadata:
+      script_style: modern_square_print
+      era: modern
+      document_type: public_document
+      layout_type: mixed
+      vocalization: none
+      source_type: verified_digital_pdf
+      source_collection: Contemporary Hebrew public documents
+      minimum_documents: 100
+      minimum_pages: 500
+      minimum_template_families: 50
+      minimum_table_pages: 50
+      minimum_mixed_bidi_pages: 100
+      minimum_form_pages: 20
+    notes: Only pages whose text layer agrees across independent extractors and passes Modern Hebrew scope checks
+      may enter the frozen source.
+  modern-print-lines-development-v1:
+    title: Hebrew OCR Corpus modern print lines development subset
+    version: ce4d1c347bd4e8b98a23f23256b0ecf01fa663c5
+    task: line_recognition_development
+    track: modern_line_recognition
+    languages:
+    - he
+    - en
+    script: Hebr
+    status: supplementary
+    converter: hf-image-text
+    homepage: https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-corpus
+    citation:
+      key: ssdataanalysis-hebrew-ocr-corpus-modern-lines
+      text: ssdataanalysis. Hebrew OCR Corpus — Clean Standalone v2, modern_print_lines subset.
+    license:
+      spdx: LicenseRef-Owner-Generated-Mixed-Provenance
+      tier: external-review
+      redistribution: conditional
+      requires_acceptance: false
+      authority: Per-sample provenance and rights_status fields in the dataset
+      conflicts:
+      - This source is development-only and is not an official hidden test source.
+    artifacts:
+    - artifact_id: hub-repository
+      url: git+https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-corpus
+      filename: ssdataanalysis-hebrew-ocr-corpus
+      archive: git
+      revision: ce4d1c347bd4e8b98a23f23256b0ecf01fa663c5
+      required: false
+    discovery:
+      annotation_globs:
+      - manifests/strict_all.jsonl.gz
+      image_roots:
+      - webdataset/modern_print_lines
+      exclude_globs: []
+      split_from_path: true
+    split:
+      strategy: upstream
+      group_fields:
+      - metadata.curation_group_id
+      upstream_map:
+        train: train
+        validation: dev
+        test: test
+    metadata:
+      script_style: modern_square_print
+      era: modern
+      document_type: synthetic_and_rendered_line
+      layout_type: line
+      vocalization: none
+      source_type: development_corpus
+    notes: Development and baseline-training support only; never used as the official representative page-OCR test.
+  modern-handwriting-lines-v1:
+    title: Hebrew HTR Curated v1 modern human handwriting holdout
+    version: ec4c7074ce2b3edc79889b00319e200d129eecf7
+    task: handwriting_line_recognition
+    track: modern_handwriting
+    languages:
+    - he
+    script: Hebr
+    status: supplementary
+    converter: hf-image-text
+    homepage: https://huggingface.co/datasets/ssdataanalysis/hebrew-htr-curated-v1
+    citation:
+      key: ssdataanalysis-hebrew-htr-curated-v1
+      text: ssdataanalysis. Hebrew HTR Curated v1, stage3_human_finetune writer-disjoint holdout.
+    license:
+      spdx: LicenseRef-Source-Metadata
+      tier: external-review
+      redistribution: conditional
+      requires_acceptance: false
+      authority: Source-level provenance in curation_manifest.json and upstream dataset cards
+      conflicts:
+      - Handwriting remains a separately reported extension and is never blended into the printed-document headline.
+    artifacts:
+    - artifact_id: hub-repository
+      url: git+https://huggingface.co/datasets/ssdataanalysis/hebrew-htr-curated-v1
+      filename: ssdataanalysis-hebrew-htr-curated-v1
+      archive: git
+      revision: ec4c7074ce2b3edc79889b00319e200d129eecf7
+      required: false
+    discovery:
+      annotation_globs:
+      - stage3_human_finetune/test-*.parquet
+      image_roots:
+      - stage3_human_finetune
+      exclude_globs: []
+      split_from_path: true
+    split:
+      strategy: upstream
+      group_fields:
+      - metadata.writer
+      upstream_map:
+        train: train
+        validation: dev
+        test: test
+    metadata:
+      script_style: modern_israeli_handwriting
+      era: modern
+      document_type: handwritten_line
+      layout_type: line
+      vocalization: none
+      source_type: real_human_handwriting
+    notes: Optional Modern Hebrew HTR extension with writer-disjoint evaluation; not part of the printed OCR score.

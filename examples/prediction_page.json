@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "page_id": "doc-001-p001",
+  "regions": [
+    {
+      "region_id": "pred-r1",
+      "type": "body",
+      "polygon": [[100, 100], [1500, 100], [1500, 300], [100, 300]],
+      "base_direction": "rtl",
+      "reading_index": 0,
+      "lines": [
+        {
+          "line_id": "pred-l1",
+          "polygon": [[120, 120], [1480, 120], [1480, 280], [120, 280]],
+          "text": "בשנת 2026 הופעלה גרסה OCR-v2.1.",
+          "base_direction": "rtl",
+          "language": "he"
+        }
+      ]
+    }
+  ],
+  "reading_order": {"edges": []},
+  "tables": [],
+  "form_fields": [],
+  "timing_ms": 84.2,
+  "model": {"name": "example-ocr", "version": "2026-07-22"}
+}

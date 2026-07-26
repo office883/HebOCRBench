@@ -1,0 +1,465 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hebocrbench.org/schema/gold-page-1.0.json",
+  "title": "HebOCRBench Gold Page",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "page_id",
+    "document_id",
+    "split",
+    "track",
+    "image",
+    "metadata",
+    "regions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "page_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "split": {
+      "enum": [
+        "train",
+        "dev",
+        "test",
+        "diagnostic"
+      ]
+    },
+    "track": {
+      "type": "string",
+      "minLength": 1
+    },
+    "image": {
+      "$ref": "#/$defs/image"
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "regions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/region"
+      }
+    },
+    "reading_order": {
+      "$ref": "#/$defs/readingOrder"
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/table"
+      },
+      "default": []
+    },
+    "form_fields": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/formField"
+      },
+      "default": []
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "point": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "polygon": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/point"
+      },
+      "minItems": 3
+    },
+    "image": {
+      "type": "object",
+      "required": [
+        "path",
+        "width",
+        "height",
+        "rotation_degrees"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "rotation_degrees": {
+          "enum": [
+            0,
+            90,
+            180,
+            270
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        }
+      },
+      "additionalProperties": true
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "languages",
+        "script",
+        "script_style",
+        "era",
+        "document_type",
+        "layout_type",
+        "vocalization",
+        "source_type",
+        "source_collection",
+        "license"
+      ],
+      "properties": {
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 2
+          },
+          "minItems": 1
+        },
+        "script": {
+          "type": "string",
+          "minLength": 4
+        },
+        "script_style": {
+          "type": "string",
+          "minLength": 1
+        },
+        "era": {
+          "type": "string",
+          "minLength": 1
+        },
+        "document_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "layout_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "vocalization": {
+          "enum": [
+            "none",
+            "partial",
+            "full",
+            "mixed"
+          ]
+        },
+        "source_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "font_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "writer_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scribe_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "template_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_collection": {
+          "type": "string",
+          "minLength": 1
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1
+        },
+        "degradation": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "line": {
+      "type": "object",
+      "required": [
+        "line_id",
+        "polygon",
+        "text",
+        "base_direction",
+        "language"
+      ],
+      "properties": {
+        "line_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "polygon": {
+          "$ref": "#/$defs/polygon"
+        },
+        "baseline": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/point"
+          },
+          "minItems": 2
+        },
+        "text": {
+          "type": "string"
+        },
+        "base_direction": {
+          "enum": [
+            "rtl",
+            "ltr",
+            "auto"
+          ]
+        },
+        "language": {
+          "type": "string",
+          "minLength": 2
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "uncertain_spans": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "region": {
+      "type": "object",
+      "required": [
+        "region_id",
+        "type",
+        "polygon",
+        "base_direction",
+        "lines"
+      ],
+      "properties": {
+        "region_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "polygon": {
+          "$ref": "#/$defs/polygon"
+        },
+        "base_direction": {
+          "enum": [
+            "rtl",
+            "ltr",
+            "auto"
+          ]
+        },
+        "reading_index": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/line"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "readingOrder": {
+      "type": "object",
+      "properties": {
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "unordered_groups": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "cell": {
+      "type": "object",
+      "required": [
+        "row_start",
+        "row_end",
+        "col_start",
+        "col_end",
+        "text"
+      ],
+      "properties": {
+        "row_start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "row_end": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "col_start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "col_end": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "text": {
+          "type": "string"
+        },
+        "polygon": {
+          "$ref": "#/$defs/polygon"
+        }
+      },
+      "additionalProperties": true
+    },
+    "table": {
+      "type": "object",
+      "required": [
+        "table_id",
+        "n_rows",
+        "n_cols",
+        "cells"
+      ],
+      "properties": {
+        "table_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "region_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "polygon": {
+          "$ref": "#/$defs/polygon"
+        },
+        "n_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "n_cols": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cells": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/cell"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "formField": {
+      "type": "object",
+      "required": [
+        "field_id",
+        "value_text"
+      ],
+      "properties": {
+        "field_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label_text": {
+          "type": "string"
+        },
+        "value_text": {
+          "type": "string"
+        },
+        "label_region_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "value_region_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

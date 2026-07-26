@@ -1,0 +1,45 @@
+schema_version: '1.0'
+track:
+  id: modern-page-ocr-v1
+  version: 1.0.0
+  title: Blind end-to-end Modern Hebrew page OCR
+  description: Detection, transcription, layout and reading-order evaluation without gold region or line identities.
+  official: true
+  task: page-ocr
+  prediction_mode: end-to-end-page
+  accepted_gold_tracks: [modern_page_ocr]
+  required_prediction_fields: [page_id, regions, regions.lines.text, reading_order]
+  primary_metrics:
+    - recognition.page_order_gcer
+    - recognition.line_gcer
+    - layout.regions.f1
+    - layout.lines.f1
+    - reading_order.edge_f1
+    - reading_order.pairwise_accuracy
+matching:
+  use_shared_ids: false
+  line_iou_threshold: 0.30
+  region_iou_threshold: 0.50
+  table_iou_threshold: 0.30
+  table_topology_threshold: 0.75
+conformance:
+  diagnostic_track: modern_bidi
+  min_exact_line_rate: 0.98
+  min_ltr_run_exact_rate: 0.99
+  min_numeric_exact_rate: 0.995
+  min_bracket_exact_rate: 0.995
+  max_visual_order_failure_count: 0
+  max_bidi_control_count: 0
+  max_unbalanced_bidi_controls: 0
+statistics:
+  bootstrap_samples: 2000
+  confidence: 0.95
+  seed: 20260725
+  worst_page_count: 25
+  worst_slice_min_pages: 10
+slice_fields:
+  - metadata.document_type
+  - metadata.template_family
+  - metadata.layout_type
+  - metadata.source_type
+  - metadata.mixed_bidi

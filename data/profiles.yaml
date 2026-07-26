@@ -1,0 +1,22 @@
+schema_version: "1.0"
+profiles:
+  modern-print:
+    description: Canonical Modern Hebrew printed-document benchmark profile.
+    source_ids: [modern_bidi_diagnostic, modern_public_documents]
+    allowed_license_classes: [bundled, per_item]
+    require_acceptance: false
+    primary_score_only: false
+
+  modern-development:
+    description: Modern print profile plus the non-headline line-recognition development source.
+    source_ids: [modern_bidi_diagnostic, modern_public_documents, modern_print_lines_development]
+    allowed_license_classes: [bundled, per_item]
+    require_acceptance: false
+    primary_score_only: false
+
+  modern-handwriting:
+    description: Separate writer-disjoint Modern Hebrew handwriting extension.
+    source_ids: [modern_handwriting_lines]
+    allowed_license_classes: [per_item]
+    require_acceptance: false
+    primary_score_only: false

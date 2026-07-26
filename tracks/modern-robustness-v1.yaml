@@ -1,0 +1,39 @@
+schema_version: '1.0'
+track:
+  id: modern-robustness-v1
+  version: 1.0.0
+  title: Modern Hebrew OCR robustness
+  description: Performance on degradation pairs derived from frozen modern source pages with split and ancestry preserved.
+  official: true
+  task: robustness
+  prediction_mode: end-to-end-page
+  accepted_gold_tracks: [modern_robustness]
+  required_prediction_fields: [page_id, regions, regions.lines.text, reading_order]
+  primary_metrics:
+    - recognition.page_order_gcer
+    - recognition.line_gcer
+    - recognition.line_exact_rate
+matching:
+  use_shared_ids: false
+  line_iou_threshold: 0.30
+  region_iou_threshold: 0.50
+conformance:
+  diagnostic_track: modern_bidi
+  min_exact_line_rate: 0.98
+  min_ltr_run_exact_rate: 0.99
+  min_numeric_exact_rate: 0.995
+  min_bracket_exact_rate: 0.995
+  max_visual_order_failure_count: 0
+  max_bidi_control_count: 0
+  max_unbalanced_bidi_controls: 0
+statistics:
+  bootstrap_samples: 2000
+  confidence: 0.95
+  seed: 20260725
+  worst_page_count: 25
+  worst_slice_min_pages: 10
+slice_fields:
+  - metadata.degradation_family
+  - metadata.degradation_level
+  - metadata.document_type
+  - metadata.template_family
