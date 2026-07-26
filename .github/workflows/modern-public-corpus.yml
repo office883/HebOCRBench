@@ -31,6 +31,10 @@ on:
   push:
     paths:
       - .github/modern-public-corpus-request.json
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/modern-public-corpus-request.json
 
 permissions:
   contents: read
