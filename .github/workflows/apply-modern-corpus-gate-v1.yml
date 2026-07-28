@@ -59,18 +59,61 @@ jobs:
             tesseract-ocr-eng \
             tesseract-ocr-heb
 
-      - name: Reconstruct and apply audited patch
+      - name: Reconstruct and probe audited patch
+        id: patch
+        continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
+          log="$RUNNER_TEMP/modern-corpus-gate-patch.log"
+          status_file="$RUNNER_TEMP/modern-corpus-gate-patch.status"
+          exec > >(tee "$log") 2>&1
           patch="$RUNNER_TEMP/modern-corpus-gate-v1.patch"
+          echo "branch_head=$(git rev-parse HEAD)"
+          echo "transport_blob=$(git hash-object tools/modern-corpus-gate-v1.patch.b64)"
           base64 --decode tools/modern-corpus-gate-v1.patch.b64 > "$patch"
+          decode_status=$?
+          echo "decode_status=$decode_status"
+          sha256sum "$patch"
           printf '%s  %s\n' \
             '9542047be4e39fd2274f5d9db7e6e9724afceea2e45f26c9a2b7a599825a3e45' \
             "$patch" | sha256sum --check --strict
-          git apply --check "$patch"
-          git apply "$patch"
+          hash_status=$?
+          echo "hash_status=$hash_status"
+          git apply --check --verbose "$patch"
+          check_status=$?
+          echo "apply_check_status=$check_status"
+          if (( decode_status == 0 && hash_status == 0 && check_status == 0 )); then
+            git apply --verbose "$patch"
+            apply_status=$?
+          else
+            apply_status=99
+          fi
+          echo "apply_status=$apply_status"
           git diff --check
+          diff_status=$?
+          echo "diff_status=$diff_status"
+          status=$(( decode_status || hash_status || check_status || apply_status || diff_status ))
+          printf '%s\n' "$status" > "$status_file"
+          exit 0
+
+      - name: Upload patch diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: modern-corpus-gate-patch-diagnostics
+          path: |
+            ${{ runner.temp }}/modern-corpus-gate-patch.log
+            ${{ runner.temp }}/modern-corpus-gate-patch.status
+            ${{ runner.temp }}/modern-corpus-gate-v1.patch
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Require successful patch application
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat "$RUNNER_TEMP/modern-corpus-gate-patch.status")" = '0'
 
       - name: Install package and development dependencies
         run: |
