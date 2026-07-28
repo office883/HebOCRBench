@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - .github/workflows/apply-modern-corpus-gate-main.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/modern-corpus-gate-run.json
   workflow_dispatch:
 
 permissions:
@@ -12,10 +16,11 @@ permissions:
 
 concurrency:
   group: modern-corpus-gate-main-${{ github.repository }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   apply-verify-publish:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     steps:
