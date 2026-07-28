@@ -1,0 +1,5 @@
+{
+  "schema_version": "1.0",
+  "requested_at": "2026-07-28",
+  "purpose": "report canonical main Git tree SHA for an atomic verified source commit"
+}
