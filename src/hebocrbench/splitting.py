@@ -14,6 +14,7 @@ class SplitPolicyError(ValueError):
 
 
 _ALLOWED_SPLITS = ("train", "dev", "test")
+_ALLOWED_FIXED_SPLITS = (*_ALLOWED_SPLITS, "diagnostic")
 
 
 def _field_value(record: Mapping[str, object], field: str) -> object:
@@ -54,6 +55,22 @@ def _validated_ratios(policy: Mapping[str, object]) -> tuple[tuple[str, float], 
     if not math.isclose(sum(values.values()), 1.0, rel_tol=0.0, abs_tol=1e-9):
         raise SplitPolicyError(f"Split ratios must sum to 1.0, got {sum(values.values()):.12g}")
     return tuple((split, values[split]) for split in _ALLOWED_SPLITS if split in values)
+
+
+def _fixed_split(policy: Mapping[str, object]) -> str:
+    raw = policy.get("ratios")
+    if not isinstance(raw, Mapping) or len(raw) != 1:
+        raise SplitPolicyError("fixed strategy requires exactly one ratios entry")
+    split, raw_ratio = next(iter(raw.items()))
+    split = str(split)
+    if split not in _ALLOWED_FIXED_SPLITS:
+        raise SplitPolicyError(f"Unsupported fixed split name: {split}")
+    ratio = float(raw_ratio)
+    if not math.isfinite(ratio) or not math.isclose(
+        ratio, 1.0, rel_tol=0.0, abs_tol=1e-9
+    ):
+        raise SplitPolicyError("fixed strategy ratio must equal 1.0")
+    return split
 
 
 def _hash_unit_interval(seed: object, group_key: str) -> float:
@@ -98,6 +115,11 @@ def assign_splits(
                 )
         return copied
     if strategy in {"none", "preserve"}:
+        return copied
+    if strategy in {"fixed", "diagnostic"}:
+        split = _fixed_split(policy)
+        for record in copied:
+            record["split"] = split
         return copied
     if strategy != "hash_group":
         raise SplitPolicyError(f"Unsupported split strategy: {strategy!r}")
