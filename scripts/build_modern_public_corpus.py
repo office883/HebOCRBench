@@ -10,8 +10,9 @@ verification.
 from __future__ import annotations
 
 import argparse
-import importlib.util
 from collections.abc import Mapping
+import importlib.util
+import os
 from pathlib import Path
 import re
 import unicodedata
@@ -167,7 +168,7 @@ def _preflight_pages(
     evidence_by_page = {int(item["page_number"]): item for item in evidence}
     for page_number in accepted:
         item = evidence_by_page[page_number]
-        item["table_count"] = len(records[page_number].get("tables", []))
+        item["table_count"] = len(records[page_number].get("tables") or [])
         item["table_detection"] = "verified_page_conversion"
 
     def priority(page_number: int) -> tuple[int, int, int, int, int, int]:
@@ -175,7 +176,7 @@ def _preflight_pages(
         table_count = int(item.get("table_count", 0) or 0)
         form_signal = int(item.get("form_signal", 0) or 0)
         mixed = int(bool(item.get("mixed_bidi", False)))
-        regions = len(records[page_number].get("regions", []))
+        regions = len(records[page_number].get("regions") or [])
         hebrew = int(item.get("hebrew_letters", 0) or 0)
         return (
             int(table_count > 0),
@@ -186,15 +187,18 @@ def _preflight_pages(
             -page_number,
         )
 
-    selected = sorted(
-        sorted(accepted, key=priority, reverse=True)[:maximum_pages]
-    )
+    selected = sorted(sorted(accepted, key=priority, reverse=True)[:maximum_pages])
     return selected, {number: records[number] for number in selected}, rejections
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = _ORIGINAL_BUILD_PARSER()
-    parser.add_argument("--minimum-template-families", type=int, default=50)
+    default_templates = int(os.environ.get("MINIMUM_TEMPLATE_FAMILIES", "50"))
+    parser.add_argument(
+        "--minimum-template-families",
+        type=int,
+        default=default_templates,
+    )
     return parser
 
 
@@ -209,6 +213,15 @@ def materialize(args: argparse.Namespace) -> dict[str, object]:
     summary.setdefault("parameters", {})["minimum_template_families"] = minimum
     output = Path(args.output).resolve()
     _ENGINE._json_write(output / "evidence" / "summary.json", summary)
+    evidence_payload = {
+        "schema_version": "1.0",
+        "source_id": _ENGINE.SOURCE_ID,
+        "source_version": _ENGINE.SOURCE_VERSION,
+        "artifact_id": _ENGINE.ARTIFACT_ID,
+        "requested_revision": _ENGINE.SOURCE_VERSION,
+        "extra": summary,
+    }
+    _ENGINE._json_write(output / "SOURCE_EVIDENCE.json", evidence_payload)
     _ENGINE.write_source_evidence(
         output,
         source_id=_ENGINE.SOURCE_ID,
