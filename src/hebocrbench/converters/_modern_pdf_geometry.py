@@ -8,8 +8,8 @@ the characters inside a word.
 
 from __future__ import annotations
 
-from typing import Any, Sequence
 import unicodedata
+from typing import Any, Sequence
 
 
 def _word_direction(text: str) -> str:
