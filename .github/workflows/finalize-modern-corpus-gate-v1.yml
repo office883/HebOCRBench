@@ -1,0 +1,134 @@
+name: Finalize verified Modern Hebrew corpus gate
+
+on:
+  push:
+    branches:
+      - agent/modern-corpus-gate-v1
+    paths:
+      - .github/workflows/finalize-modern-corpus-gate-v1.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-modern-corpus-gate-v1
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out exact repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/modern-corpus-gate-v1
+          fetch-depth: 0
+
+      - name: Freeze branch identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$(git rev-parse HEAD)"
+          echo "BASE_SHA=$base" >> "$GITHUB_ENV"
+          git fetch origin agent/modern-corpus-gate-v1
+          test "$(git rev-parse origin/agent/modern-corpus-gate-v1)" = "$base"
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install system and Python dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            fonts-noto-core \
+            poppler-utils \
+            tesseract-ocr \
+            tesseract-ocr-eng \
+            tesseract-ocr-heb
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev,bidi,corpus]'
+
+      - name: Reconstruct and apply the audited patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          encoded="$RUNNER_TEMP/modern-corpus-gate-v1.patch.b64"
+          patch="$RUNNER_TEMP/modern-corpus-gate-v1.patch"
+          mapfile -t parts < <(find tools -maxdepth 1 -type f -name 'modern-corpus-gate-v1.patch.b64.part*' | sort)
+          test "${#parts[@]}" -eq 6
+          cat "${parts[@]}" > "$encoded"
+          base64 --decode "$encoded" > "$patch"
+          printf '%s  %s\n' \
+            'fe2d9ef43ba561b6fe49ace33f1455d5159ee33ece35e91464299adba7c8f43f' \
+            "$patch" | sha256sum --check --strict
+          git apply --check --verbose "$patch"
+          git apply --verbose "$patch"
+          git diff --check
+
+      - name: Normalize and verify source
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            scripts/build_modern_public_corpus.py
+            src/hebocrbench/converters/modern_pdf.py
+            tests/test_modern_pdf_agreement.py
+            tests/test_modern_public_materializer.py
+          )
+          python -m ruff check "${files[@]}" --fix --exit-zero
+          python -m ruff format "${files[@]}"
+          python -m ruff check .
+          python -m ruff format --check .
+          git diff --check
+
+      - name: Run focused and complete verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q \
+            tests/test_modern_pdf_agreement.py \
+            tests/test_modern_public_materializer.py
+          python -m pytest -q
+          python -m compileall -q src scripts
+          hebocrbench tracks verify
+          hebocrbench sanity \
+            --output "$RUNNER_TEMP/hebocr-sanity" \
+            --variants clean \
+            --limit 28
+
+      - name: Commit only verified source and remove transport scaffolding
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -f --ignore-unmatch \
+            .github/workflows/apply-modern-corpus-gate-v1.yml \
+            .github/workflows/finalize-modern-corpus-gate-v1.yml \
+            tools/modern-corpus-gate-v1.patch.b64 \
+            tools/modern-corpus-gate-v1.patch.b64.part00 \
+            tools/modern-corpus-gate-v1.patch.b64.part01 \
+            tools/modern-corpus-gate-v1.patch.b64.part02 \
+            tools/modern-corpus-gate-v1.patch.b64.part03 \
+            tools/modern-corpus-gate-v1.patch.b64.part04 \
+            tools/modern-corpus-gate-v1.patch.b64.part05 \
+            tools/modern-corpus-gate-v1.patch.b64.part99
+          git add -- \
+            scripts/build_modern_public_corpus.py \
+            src/hebocrbench/converters/modern_pdf.py \
+            tests/test_modern_pdf_agreement.py \
+            tests/test_modern_public_materializer.py
+          git diff --cached --check
+          git config user.name 'HebOCRBench corpus gate'
+          git config user.email 'actions@users.noreply.github.com'
+          git commit -m 'fix: make the Modern Hebrew corpus gate scientifically usable'
+          git fetch origin agent/modern-corpus-gate-v1
+          test "$(git rev-parse origin/agent/modern-corpus-gate-v1)" = "$BASE_SHA"
+          git push \
+            --force-with-lease=refs/heads/agent/modern-corpus-gate-v1:$BASE_SHA \
+            origin HEAD:refs/heads/agent/modern-corpus-gate-v1
