@@ -8,7 +8,19 @@ from hebocrbench.converters.modern_pdf import ModernPdfError, text_layer_agreeme
 def test_policy_accepts_reordered_regions_but_preserves_local_text() -> None:
     right = "סכום 1,250 ש״ח בתאריך 26.07.2026. הערה שומרת סדר מילים מקומי."
     left = "כתובת qa@example.com ודגם OCR-v2.1. הטקסט נשאר זהה בכל אזור."
-    assert text_layer_agreement(right + "\n" + left, left + "\n" + right, minimum=0.98) >= 0.98
+
+    assert text_layer_agreement(
+        right + "\n" + left,
+        left + "\n" + right,
+        minimum=0.98,
+    ) >= 0.98
+
+
+def test_policy_ignores_directional_controls_and_embedded_bom() -> None:
+    text = "הדוח לשנת 2026 נשלח לכתובת qa@example.com."
+    decorated = "\u202b" + text + "\u202c\ufeff"
+
+    assert text_layer_agreement(text, decorated, minimum=0.98) == 1.0
 
 
 def test_policy_rejects_reversed_local_word_order() -> None:

@@ -1,14 +1,17 @@
 """Public Modern-Hebrew PDF converter API.
 
-The extraction engine and the scientific acceptance policy are separated so
-reading-order evaluation is not accidentally folded into text-layer fidelity.
+The extraction engine, geometric word-order reconstruction and scientific
+acceptance policy are separate so reading-order evaluation is not accidentally
+folded into text-layer fidelity.
 """
 
 from __future__ import annotations
 
 from . import _modern_pdf_engine as _engine
+from ._modern_pdf_geometry import install as _install_geometry
 from ._modern_pdf_policy import install as _install_policy
 
+_install_geometry(_engine)
 _install_policy(_engine)
 
 ModernPdfError = _engine.ModernPdfError

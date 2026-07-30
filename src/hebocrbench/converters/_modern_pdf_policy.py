@@ -2,8 +2,8 @@
 
 The low-level PDF engine is kept separate from this policy so that text-layer
 fidelity can evolve without coupling it to geometry extraction. Global page
-order is diagnostic; acceptance is based on content, local adjacency, exact
-LTR-sensitive tokens, and punctuation coverage.
+order is diagnostic; acceptance is based on content, local line adjacency,
+exact LTR-sensitive tokens, and punctuation coverage.
 """
 
 from __future__ import annotations
@@ -32,9 +32,27 @@ def _is_critical_token(token: str) -> bool:
 def install(engine: Any) -> None:
     """Install the v1 Modern-Hebrew fidelity policy into the PDF engine."""
 
+    def comparison_text(text: str) -> str:
+        # Poppler may emit directional formatting marks and an embedded BOM.
+        # They are layout metadata, not OCR ground-truth characters.
+        return engine.normalize_strict(text).replace("\ufeff", "")
+
+    def line_anchor_ngrams(text: str) -> tuple[tuple[str, ...], ...]:
+        result: list[tuple[str, ...]] = []
+        for line in comparison_text(text).splitlines():
+            anchors = tuple(
+                token
+                for token in engine._comparison_tokens(line)
+                if engine._is_anchor_token(token)
+            )
+            result.extend(_ngrams(anchors, 2))
+        return tuple(result)
+
     def agreement_components(first: str, second: str) -> dict[str, float]:
-        first_tokens = engine._comparison_tokens(first)
-        second_tokens = engine._comparison_tokens(second)
+        first_clean = comparison_text(first)
+        second_clean = comparison_text(second)
+        first_tokens = engine._comparison_tokens(first_clean)
+        second_tokens = engine._comparison_tokens(second_clean)
         if not first_tokens or not second_tokens:
             return {
                 "anchor_order": 0.0,
@@ -45,7 +63,9 @@ def install(engine: Any) -> None:
                 "overall": 0.0,
             }
 
-        first_anchors = tuple(token for token in first_tokens if engine._is_anchor_token(token))
+        first_anchors = tuple(
+            token for token in first_tokens if engine._is_anchor_token(token)
+        )
         second_anchors = tuple(
             token for token in second_tokens if engine._is_anchor_token(token)
         )
@@ -55,8 +75,12 @@ def install(engine: Any) -> None:
         second_punctuation = tuple(
             token for token in second_tokens if not engine._is_anchor_token(token)
         )
-        first_critical = tuple(token for token in first_tokens if _is_critical_token(token))
-        second_critical = tuple(token for token in second_tokens if _is_critical_token(token))
+        first_critical = tuple(
+            token for token in first_tokens if _is_critical_token(token)
+        )
+        second_critical = tuple(
+            token for token in second_tokens if _is_critical_token(token)
+        )
 
         anchor_order = (
             float(Levenshtein.normalized_similarity(first_anchors, second_anchors))
@@ -64,12 +88,14 @@ def install(engine: Any) -> None:
             else 0.0
         )
         anchor_content = engine._multiset_f1(first_anchors, second_anchors)
-        local_order = (
-            anchor_order
-            if len(first_anchors) < 2 or len(second_anchors) < 2
-            else engine._multiset_f1(_ngrams(first_anchors, 2), _ngrams(second_anchors, 2))
+        local_order = engine._multiset_f1(
+            line_anchor_ngrams(first_clean),
+            line_anchor_ngrams(second_clean),
         )
-        punctuation_content = engine._multiset_f1(first_punctuation, second_punctuation)
+        punctuation_content = engine._multiset_f1(
+            first_punctuation,
+            second_punctuation,
+        )
         critical_content = engine._multiset_f1(first_critical, second_critical)
         return {
             "anchor_order": anchor_order,
@@ -115,5 +141,7 @@ def install(engine: Any) -> None:
 
     engine._ngrams = _ngrams
     engine._is_critical_token = _is_critical_token
+    engine._comparison_text = comparison_text
+    engine._line_anchor_ngrams = line_anchor_ngrams
     engine._agreement_components = agreement_components
     engine.text_layer_agreement = text_layer_agreement
