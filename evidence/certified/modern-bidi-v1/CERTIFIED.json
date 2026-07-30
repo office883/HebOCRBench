@@ -1,0 +1,8 @@
+{
+  "benchmark_version": "1.0.0",
+  "certification_sha256": "820ff22f393fbb91da90d22d984ca6f8a6d733eaeab1c7b7f80a679250440e67",
+  "certified": true,
+  "dataset_fingerprint": "4c76d51f0e8ea9ad4d7a760fe83907e5984c634490d772e82fa14c5ba46a3ba1",
+  "registry_fingerprint": "2958ab9868ce10754ff3ad4144b5abf95b4c32d4c35daf993057f73cf8fe730f",
+  "schema_version": "1.0"
+}

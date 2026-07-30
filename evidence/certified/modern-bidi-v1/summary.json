@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "track_id": "modern-bidi-v1",
+  "implementation_commit": "8d31a81d579793f4e0e278a78ba5bfef01986e67",
+  "dataset_fingerprint": "4c76d51f0e8ea9ad4d7a760fe83907e5984c634490d772e82fa14c5ba46a3ba1",
+  "registry_fingerprint": "2958ab9868ce10754ff3ad4144b5abf95b4c32d4c35daf993057f73cf8fe730f",
+  "certification_sha256": "820ff22f393fbb91da90d22d984ca6f8a6d733eaeab1c7b7f80a679250440e67",
+  "artifacts": {
+    "CERTIFIED.json": {
+      "sha256": "0e5dc7c1a6a08cb3052da1dcd9faa2d147d500a4f0e647c6b39cf384d8ea9b80",
+      "size_bytes": 364
+    },
+    "FROZEN.json": {
+      "sha256": "513c7a3f1676d66a67a82872d55e136b965f4e65f2a162835ef76bc825e11ab0",
+      "size_bytes": 268
+    },
+    "audit.json": {
+      "sha256": "87bc914ba8ad777fe5b45842a835ce810b8c4666d4d4384360118f782a3e9bf5",
+      "size_bytes": 235
+    },
+    "dataset.lock.json": {
+      "sha256": "20268cd96aebdfac9786b1778f7e19b4aafd60df6931d7b4c3dced35583f760a",
+      "size_bytes": 11561
+    },
+    "gold.jsonl": {
+      "sha256": "7922f87d8e05eb8394d77d699561abadb0518980c72122885b0d72d15384b41f",
+      "size_bytes": 98461
+    },
+    "manifest.json": {
+      "sha256": "7c8380f643686159caed86a4f680a4f5240fa2e8bd71984a9b355489d90f92ab",
+      "size_bytes": 16472
+    },
+    "stats.json": {
+      "sha256": "09a060c9ac4f3aa040ecec1ddd2cf0ce13c3629c8de92fda33e88069fc0f2088",
+      "size_bytes": 3083
+    }
+  },
+  "coverage": {
+    "pages": 48,
+    "documents": 48,
+    "lines": 64,
+    "regions": 55,
+    "mixed_bidi_lines": 36,
+    "numeric_runs": 75,
+    "latin_runs": 75,
+    "hebrew_letters": 1172,
+    "hebrew_punctuation": 39,
+    "combining_marks": 57,
+    "unique_codepoints": 135
+  },
+  "certification_gates": {
+    "passed": 12,
+    "total": 12
+  }
+}

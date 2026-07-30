@@ -1,0 +1,16 @@
+{
+  "errors": [],
+  "is_valid": true,
+  "stats": {
+    "errors": 0,
+    "pages": 48,
+    "sources": {
+      "modern-bidi-diagnostic-v1": 48
+    },
+    "splits": {
+      "diagnostic": 48
+    },
+    "warnings": 0
+  },
+  "warnings": []
+}
