@@ -1,6 +1,5 @@
 name: Build Modern Hebrew public-document corpus
 
-# Release gate: this workflow must pass on the PR head before merge.
 on:
   workflow_dispatch:
     inputs:
@@ -12,6 +11,10 @@ on:
         description: Minimum accepted benchmark pages
         required: true
         default: '500'
+      minimum_template_families:
+        description: Minimum disjoint template families
+        required: true
+        default: '50'
       maximum_records_per_entity:
         description: Maximum Knesset catalog rows inspected per entity
         required: true
@@ -28,11 +31,23 @@ on:
         description: Minimum selected pages containing Hebrew with Latin or numbers
         required: true
         default: '100'
+      maximum_pages_per_document:
+        description: Maximum accepted pages selected from one document
+        required: true
+        default: '20'
+      maximum_documents_per_template:
+        description: Maximum accepted documents from one template family
+        required: true
+        default: '20'
+      minimum_agreement:
+        description: Minimum independent text-layer content agreement
+        required: true
+        default: '0.98'
+      dpi:
+        description: Render resolution used for benchmark images
+        required: true
+        default: '200'
   push:
-    paths:
-      - .github/modern-public-corpus-request.json
-  pull_request:
-    branches: [main]
     paths:
       - .github/modern-public-corpus-request.json
 
@@ -50,13 +65,77 @@ jobs:
     env:
       TARGET_DOCUMENTS: ${{ inputs.target_documents || '100' }}
       TARGET_PAGES: ${{ inputs.target_pages || '500' }}
+      MINIMUM_TEMPLATE_FAMILIES: ${{ inputs.minimum_template_families || '50' }}
       MAXIMUM_RECORDS_PER_ENTITY: ${{ inputs.maximum_records_per_entity || '12000' }}
       MINIMUM_TABLE_PAGES: ${{ inputs.minimum_table_pages || '50' }}
       MINIMUM_FORM_PAGES: ${{ inputs.minimum_form_pages || '20' }}
       MINIMUM_MIXED_BIDI_PAGES: ${{ inputs.minimum_mixed_bidi_pages || '100' }}
+      MAXIMUM_PAGES_PER_DOCUMENT: ${{ inputs.maximum_pages_per_document || '20' }}
+      MAXIMUM_DOCUMENTS_PER_TEMPLATE: ${{ inputs.maximum_documents_per_template || '20' }}
+      MINIMUM_AGREEMENT: ${{ inputs.minimum_agreement || '0.98' }}
+      DPI: ${{ inputs.dpi || '200' }}
+      RUN_LABEL: workflow-dispatch
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      - name: Resolve and validate the requested corpus contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          fields = {
+              'TARGET_DOCUMENTS': ('documents', int),
+              'TARGET_PAGES': ('pages', int),
+              'MINIMUM_TEMPLATE_FAMILIES': ('template_families', int),
+              'MAXIMUM_RECORDS_PER_ENTITY': ('maximum_records_per_entity', int),
+              'MINIMUM_TABLE_PAGES': ('table_pages', int),
+              'MINIMUM_FORM_PAGES': ('form_pages', int),
+              'MINIMUM_MIXED_BIDI_PAGES': ('mixed_bidi_pages', int),
+              'MAXIMUM_PAGES_PER_DOCUMENT': ('maximum_pages_per_document', int),
+              'MAXIMUM_DOCUMENTS_PER_TEMPLATE': ('maximum_documents_per_template', int),
+              'MINIMUM_AGREEMENT': ('minimum_agreement', float),
+              'DPI': ('dpi', int),
+          }
+          request_path = Path('.github/modern-public-corpus-request.json')
+          request = {}
+          if os.environ.get('GITHUB_EVENT_NAME') == 'push':
+              request = json.loads(request_path.read_text(encoding='utf-8'))
+          resolved = {}
+          for env_name, (request_name, converter) in fields.items():
+              raw = request.get(request_name, os.environ[env_name])
+              value = converter(raw)
+              if value <= 0:
+                  raise SystemExit(f'{request_name} must be positive')
+              resolved[env_name] = str(value)
+          agreement = float(resolved['MINIMUM_AGREEMENT'])
+          if not 0.0 < agreement <= 1.0:
+              raise SystemExit('minimum_agreement must be in (0, 1]')
+          if int(resolved['TARGET_PAGES']) < int(resolved['TARGET_DOCUMENTS']):
+              raise SystemExit('target pages must not be smaller than target documents')
+          if int(resolved['MINIMUM_TEMPLATE_FAMILIES']) > int(resolved['TARGET_DOCUMENTS']):
+              raise SystemExit('template-family target cannot exceed document target')
+          resolved['RUN_LABEL'] = str(request.get('mode', os.environ.get('RUN_LABEL', 'manual')))
+          resolved_contract = {
+              'schema_version': '1.0',
+              'source_commit': os.environ['GITHUB_SHA'],
+              'event': os.environ['GITHUB_EVENT_NAME'],
+              'run_label': resolved['RUN_LABEL'],
+              'values': resolved,
+          }
+          Path(os.environ['RUNNER_TEMP'], 'modern-public-request.resolved.json').write_text(
+              json.dumps(resolved_contract, ensure_ascii=False, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as output:
+              for key, value in resolved.items():
+                  output.write(f'{key}={value}\n')
+          print(json.dumps(resolved_contract, ensure_ascii=False, sort_keys=True))
+          PY
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -87,6 +166,10 @@ jobs:
             --minimum-table-pages "$MINIMUM_TABLE_PAGES" \
             --minimum-form-pages "$MINIMUM_FORM_PAGES" \
             --minimum-mixed-bidi-pages "$MINIMUM_MIXED_BIDI_PAGES" \
+            --maximum-pages-per-document "$MAXIMUM_PAGES_PER_DOCUMENT" \
+            --maximum-documents-per-template "$MAXIMUM_DOCUMENTS_PER_TEMPLATE" \
+            --minimum-agreement "$MINIMUM_AGREEMENT" \
+            --dpi "$DPI" \
             --overwrite 2>&1 | tee "$log"
           status=${PIPESTATUS[0]}
           printf '%s\n' "$status" > "$RUNNER_TEMP/modern-public-materialize.status"
@@ -96,8 +179,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hebocrbench-modern-public-diagnostics
+          name: hebocrbench-modern-public-${{ env.RUN_LABEL }}-diagnostics
           path: |
+            ${{ runner.temp }}/modern-public-request.resolved.json
             ${{ runner.temp }}/modern-public-materialize.log
             ${{ runner.temp }}/modern-public-materialize.status
             ${{ runner.temp }}/modern-public-documents-v1/.hebocrbench-source.json
@@ -107,7 +191,7 @@ jobs:
           if-no-files-found: warn
           include-hidden-files: true
           compression-level: 9
-          retention-days: 14
+          retention-days: 30
 
       - name: Require successful materialization
         shell: bash
@@ -123,15 +207,16 @@ jobs:
           test -s "$root/.hebocrbench-source.json"
           test -s "$root/SOURCE_INVENTORY.json"
           test -s "$root/SOURCE_EVIDENCE.json"
-          python - "$root" "$TARGET_DOCUMENTS" "$TARGET_PAGES" "$MINIMUM_TABLE_PAGES" "$MINIMUM_FORM_PAGES" "$MINIMUM_MIXED_BIDI_PAGES" <<'PY'
+          python - "$root" "$TARGET_DOCUMENTS" "$TARGET_PAGES" "$MINIMUM_TEMPLATE_FAMILIES" "$MINIMUM_TABLE_PAGES" "$MINIMUM_FORM_PAGES" "$MINIMUM_MIXED_BIDI_PAGES" <<'PY'
           import hashlib, json, sys
           from pathlib import Path
           root = Path(sys.argv[1])
           minimum_documents = int(sys.argv[2])
           minimum_pages = int(sys.argv[3])
-          minimum_tables = int(sys.argv[4])
-          minimum_forms = int(sys.argv[5])
-          minimum_mixed = int(sys.argv[6])
+          minimum_templates = int(sys.argv[4])
+          minimum_tables = int(sys.argv[5])
+          minimum_forms = int(sys.argv[6])
+          minimum_mixed = int(sys.argv[7])
           marker = json.loads((root / '.hebocrbench-source.json').read_text(encoding='utf-8'))
           inventory = json.loads((root / 'SOURCE_INVENTORY.json').read_text(encoding='utf-8'))
           evidence = json.loads((root / 'SOURCE_EVIDENCE.json').read_text(encoding='utf-8'))
@@ -140,7 +225,7 @@ jobs:
           assert evidence['extra']['target_reached'] is True
           assert summary['accepted_document_count'] >= minimum_documents
           assert summary['accepted_page_count'] >= minimum_pages
-          assert summary['template_family_count'] >= 50
+          assert summary['template_family_count'] >= minimum_templates
           assert summary['table_page_count'] >= minimum_tables
           assert summary['form_page_count'] >= minimum_forms
           assert summary['mixed_bidi_page_count'] >= minimum_mixed
@@ -165,10 +250,11 @@ jobs:
       - name: Upload verified source snapshot
         uses: actions/upload-artifact@v4
         with:
-          name: hebocrbench-modern-public-documents-v1
+          name: hebocrbench-modern-public-${{ env.RUN_LABEL }}
           path: |
+            ${{ runner.temp }}/modern-public-request.resolved.json
             ${{ runner.temp }}/modern-public-documents-v1.tar.gz
             ${{ runner.temp }}/modern-public-documents-v1.tar.gz.sha256
           if-no-files-found: error
           compression-level: 0
-          retention-days: 14
+          retention-days: 30
