@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0",
-  "mode": "pilot-20260730",
-  "requested_at": "2026-07-30T13:50:00+03:00",
-  "purpose": "Calibrate the scientifically separated text-fidelity and reading-order gates before the full v1 materialization",
+  "mode": "pilot-20260730-pr",
+  "requested_at": "2026-07-30T14:05:00+03:00",
+  "purpose": "Observable same-repository calibration of the scientifically separated text-fidelity and reading-order gates",
   "documents": 20,
   "pages": 100,
   "template_families": 12,
