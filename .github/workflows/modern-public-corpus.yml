@@ -50,6 +50,10 @@ on:
   push:
     paths:
       - .github/modern-public-corpus-request.json
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/modern-public-corpus-request.json
 
 permissions:
   contents: read
@@ -60,6 +64,7 @@ concurrency:
 
 jobs:
   materialize:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -103,7 +108,7 @@ jobs:
           }
           request_path = Path('.github/modern-public-corpus-request.json')
           request = {}
-          if os.environ.get('GITHUB_EVENT_NAME') == 'push':
+          if os.environ.get('GITHUB_EVENT_NAME') != 'workflow_dispatch':
               request = json.loads(request_path.read_text(encoding='utf-8'))
           resolved = {}
           for env_name, (request_name, converter) in fields.items():
