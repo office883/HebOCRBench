@@ -1,0 +1,29 @@
+name: Codex source export
+
+on:
+  push:
+    branches:
+      - agent/complete-hebrew-ocr-benchmark
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+      - name: Archive repository
+        run: git archive --format=zip --output HebOCRBench-source.zip HEAD
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: hebocrbench-source
+          path: HebOCRBench-source.zip
+          if-no-files-found: error
+          retention-days: 3
