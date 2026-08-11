@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/complete-hebrew-ocr-benchmark
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
