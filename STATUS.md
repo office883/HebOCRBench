@@ -47,14 +47,37 @@ synthetic diagnostic remains outside every ranking and headline.
 - no certified pure-Rashi historical-print root with Rashi-specific labels is
   available. The mixed HaZefira extension does not close that gap.
 
-## Still required before publication
+## Release work completed
 
-- verify the Modern and full-suite locks against the final registry/profile
-  fingerprints;
-- complete reproducible baseline runs from at least two independent OCR
-  families;
-- verify participant and organizer packs;
-- pass the final archive verifier and create the release tag.
+- The final Modern and full-suite locks were independently verified against the
+  registry and profile locks. Their suite fingerprints are
+  `c68250ec4320485e243171b7d3f86c9b3b526f8ada317eda592cd7289f4df5ea`
+  and
+  `6d2b847121d307b225ec7e785ded7060f40da20b1d8dee28982ef7da06e032d4`.
+- The participant and organizer packs were verified. The public participant
+  pack contains 34,267 Modern evaluation images, has fingerprint
+  `957e3b4f05707155db407d6707d742c7fe459365f575febb963e9d5732c3913c`,
+  and is published on
+  [Hugging Face at tag `v1.0.0`](https://huggingface.co/datasets/ssdataanalysis/hebocrbench-v1/tree/v1.0.0/participant-v1.0.0).
+  The organizer pack remains non-public and has fingerprint
+  `a9c9e376469c0fd813febbb9b87c3b525e6b23a2bbdb78957f778257f0bcc984`.
+- The complete Tesseract 5.5.3 baseline finished all five Modern tracks and all
+  separately reported extension/diagnostic roots with zero inference or API
+  failures. Its Modern result is `non_conformant`, with no headline score,
+  because mandatory BiDi gates failed.
+- The deterministic local v1 release archive was built and passed the final
+  archive verifier. Public GitHub release assets still wait on the gates below.
+
+## Publication gates still pending
+
+- complete the full official Surya run and recompute its fingerprint-bound
+  reports and guarded Modern score status;
+- publish the minimal five-file public source mirror, pin its exact 40-character
+  revision in the release workflow, and obtain a green
+  `modern-v1-release.yml` run;
+- create the GitHub `v1.0.0` tag and release after the two independent
+  baselines and release workflow are complete. The Hugging Face participant-pack
+  tag `v1.0.0` is already public.
 
 The evaluation material is public-fixed. Withheld gold and opaque participant
 IDs are protocol controls, not claims that the sources are hidden, unseen or
