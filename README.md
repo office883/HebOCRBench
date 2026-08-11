@@ -5,6 +5,20 @@ score is the five-track **Modern Hebrew printed-document headline**. Other
 scientifically different families are carried in the same full-suite manifest
 but are always reported separately.
 
+## Public v1 participant pack
+
+**[Download the public participant pack from Hugging Face at tag
+`v1.0.0`](https://huggingface.co/datasets/ssdataanalysis/hebocrbench-v1/tree/v1.0.0/participant-v1.0.0).**
+
+The pack contains all 34,267 blind-input images for the five Modern headline
+tracks, plus the participant manifests and suite lock. Gold and organizer-only
+ID mappings are not included.
+
+- participant-pack fingerprint:
+  `957e3b4f05707155db407d6707d742c7fe459365f575febb963e9d5732c3913c`;
+- Modern-suite fingerprint:
+  `c68250ec4320485e243171b7d3f86c9b3b526f8ada317eda592cd7289f4df5ea`.
+
 The v1 coverage is explicit:
 
 - five certified Modern Hebrew print roots covering Unicode/BiDi, line
