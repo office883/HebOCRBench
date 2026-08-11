@@ -1,6 +1,30 @@
 schema_version: '1.0'
 profiles_version: 1.0.0
 profiles:
+  biblical-niqqud-synthetic-diagnostic-v1:
+    title: HebOCRBench 1.0 Synthetic Niqqud Diagnostic
+    description: Held-out synthetic vocalized-line diagnostic with zero cantillation; it does not satisfy the real Biblical/cantillation coverage target.
+    source_ids:
+      - biblical-niqqud-synthetic-diagnostic-v1
+    allowed_license_tiers: [external-review]
+    certification_class: diagnostic-synthetic-niqqud-public-fixed-heldout
+    score_policy: separate-diagnostic-no-headline-no-biblical-claim
+  historical-hebrew-press-mixed-v1:
+    title: HebOCRBench 1.0 Historical Hebrew Press Mixed Square/Rashi Extension
+    description: Real public-fixed 34-page HaZefira historical newspaper extension with paired PAGE/ALTO gold and no region- or line-level pure-Rashi labels.
+    source_ids:
+      - historical-hebrew-press-mixed-v1
+    allowed_license_tiers: [external-review]
+    certification_class: extension-historical-hebrew-press-mixed-public-fixed
+    score_policy: separate-extension-no-blending-no-pure-rashi-claim
+  historical-pinkas-handwriting-v1:
+    title: HebOCRBench 1.0 Pinkas Historical Handwriting Extension
+    description: Narrow real public-fixed six-page Pinkas line-recognition extension; page-disjoint from cached training pages, single-collection, and not writer-disjoint.
+    source_ids:
+      - historical-pinkas-handwriting-v1
+    allowed_license_tiers: [open]
+    certification_class: extension-historical-pinkas-handwriting-public-fixed
+    score_policy: separate-extension-no-blending-narrow-single-collection
   modern-hebrew-print-v1:
     title: HebOCRBench 1.0 Modern Hebrew Print Profile
     description: Canonical Modern Hebrew printed-document benchmark profile with real public documents and a locked Unicode/BiDi conformance suite.
@@ -12,7 +36,7 @@ profiles:
     score_policy: guarded-five-track-weighted-geometric
   modern-hebrew-development-v1:
     title: HebOCRBench 1.0 Modern Hebrew Development Profile
-    description: Adds the modern print-line development source without changing the official hidden-test claim.
+    description: Adds the modern print-line development source for non-ranked development; it does not create a hidden or unseen test claim.
     source_ids:
       - modern-bidi-diagnostic-v1
       - modern-public-documents-v1
@@ -28,3 +52,11 @@ profiles:
     allowed_license_tiers: [external-review]
     certification_class: extension-modern-hebrew-handwriting
     score_policy: separate-extension-no-print-blending
+  rashi-print-synthetic-diagnostic-v1:
+    title: HebOCRBench 1.0 Synthetic Rashi Typeface Diagnostic
+    description: Held-out single-family synthetic Noto Rashi Hebrew line diagnostic; it is not real historical-print evidence.
+    source_ids:
+      - rashi-print-synthetic-diagnostic-v1
+    allowed_license_tiers: [external-review]
+    certification_class: diagnostic-synthetic-rashi-public-fixed-heldout
+    score_policy: separate-diagnostic-no-headline-no-historical-claim

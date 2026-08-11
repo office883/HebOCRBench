@@ -1,5 +1,6 @@
 import math
 
+import hebocrbench.geometry as geometry
 from hebocrbench.geometry import match_geometries, polygon_iou
 
 
@@ -35,3 +36,21 @@ def test_unmatched_and_split_merge_diagnostics_are_exposed():
     assert len(result.matches) == 1
     assert len(result.unmatched_prediction_indices) == 1
     assert result.split_gold_items == 1
+
+
+def test_matching_normalizes_each_polygon_once(monkeypatch):
+    calls = 0
+    original = geometry._polygon
+
+    def counted(points):
+        nonlocal calls
+        calls += 1
+        return original(points)
+
+    monkeypatch.setattr(geometry, "_polygon", counted)
+    gold = [{"polygon": rect(index * 20, 0, index * 20 + 10, 10)} for index in range(3)]
+    prediction = [{"polygon": rect(index * 20, 0, index * 20 + 10, 10)} for index in range(4)]
+
+    match_geometries(gold, prediction)
+
+    assert calls == len(gold) + len(prediction)

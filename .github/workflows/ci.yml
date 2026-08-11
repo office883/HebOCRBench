@@ -65,19 +65,17 @@ jobs:
           hebocrbench data profiles > /tmp/hebocrbench-profiles.json
           python - <<'PY'
           import json
+          from hebocrbench.corpus_registry import load_registry
+          from hebocrbench.profiles import load_profiles
+
           sources = json.load(open('/tmp/hebocrbench-sources.json', encoding='utf-8'))
           profiles = json.load(open('/tmp/hebocrbench-profiles.json', encoding='utf-8'))
-          assert {item['source_id'] for item in sources['sources']} == {
-              'modern-bidi-diagnostic-v1',
-              'modern-handwriting-lines-v1',
-              'modern-print-lines-development-v1',
-              'modern-public-documents-v1',
-          }
-          assert {item['profile_id'] for item in profiles['profiles']} == {
-              'modern-hebrew-development-v1',
-              'modern-hebrew-handwriting-v1',
-              'modern-hebrew-print-v1',
-          }
+          registry = load_registry()
+          profile_registry = load_profiles(registry=registry)
+          assert {item['source_id'] for item in sources['sources']} == set(registry.sources)
+          assert {item['profile_id'] for item in profiles['profiles']} == set(
+              profile_registry.profiles
+          )
           PY
 
       - name: Run evaluator fault-injection matrix
@@ -145,24 +143,25 @@ jobs:
           /tmp/hebocrbench-wheel/bin/python - <<'PY'
           import json
           from importlib import resources
+          from pathlib import Path
+
           import hebocrbench
+          from hebocrbench.corpus_registry import load_registry
+          from hebocrbench.profiles import load_profiles
+
           assert hebocrbench.__version__ == '1.0.0'
           profiles = json.load(open('/tmp/wheel-profiles.json', encoding='utf-8'))
-          assert len(profiles['profiles']) == 3
+          registry = load_registry()
+          profile_registry = load_profiles(registry=registry)
+          assert {item['profile_id'] for item in profiles['profiles']} == set(
+              profile_registry.profiles
+          )
           track_names = {
               item.name
               for item in resources.files('hebocrbench').joinpath('data/tracks').iterdir()
               if item.name.endswith('.yaml')
           }
-          assert track_names == {
-              'modern-bidi-v1.yaml',
-              'modern-forms-v1.yaml',
-              'modern-handwriting-v1.yaml',
-              'modern-line-recognition-v1.yaml',
-              'modern-page-ocr-v1.yaml',
-              'modern-robustness-v1.yaml',
-              'modern-tables-v1.yaml',
-          }
+          assert track_names == {path.name for path in Path('tracks').glob('*.yaml')}
           PY
 
       - name: Verify archive hygiene

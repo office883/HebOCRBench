@@ -16,8 +16,18 @@ import xml.etree.ElementTree as ET
 from .converters import ConversionContext
 from .converters.alto import convert_alto_file
 from .converters.pagexml import convert_pagexml_file
-from .converters.hf_image_text import convert_hf_image_text_manifest
+from .converters.hf_image_text import (
+    convert_hf_image_text_manifest,
+    convert_hf_image_text_parquet,
+)
+from .converters.historical_press import (
+    HistoricalPressConversionError,
+    convert_historical_press_pagealto_file,
+    validate_historical_press_corpus,
+)
+from .converters.foundation_webdataset import convert_foundation_webdataset_tar
 from .converters.modern_pdf import ModernPdfError, convert_modern_pdf_manifest
+from .converters.pinkas_webdataset import convert_pinkas_webdataset_tar
 from .corpus_registry import CorpusRegistry, CorpusSource
 from .corpus_stats import compute_corpus_stats
 from .dataset_audit import DatasetAudit, audit_dataset
@@ -72,7 +82,7 @@ def _local_name(tag: str) -> str:
 
 def _referenced_image(annotation: Path, converter: str) -> str:
     root = ET.parse(annotation).getroot()
-    if converter == "pagexml":
+    if converter in {"pagexml", "historical-press-pagealto"}:
         page = next((node for node in root.iter() if _local_name(node.tag) == "Page"), None)
         value = page.get("imageFilename") if page is not None else None
     elif converter == "alto":
@@ -134,6 +144,15 @@ def _upstream_split(source: CorpusSource, relative_annotation: Path) -> str:
     for part in relative_annotation.parts:
         if part in mapping:
             return str(mapping[part])
+    filename = relative_annotation.name
+    for upstream_name, benchmark_name in mapping.items():
+        token = str(upstream_name)
+        if (
+            filename == token
+            or filename.startswith(token + "-")
+            or filename.startswith(token + ".")
+        ):
+            return str(benchmark_name)
     raise BuildError(
         f"{source.source_id}: cannot map {relative_annotation.as_posix()} to an upstream split"
     )
@@ -201,7 +220,16 @@ def _convert_source(
     annotations = _discover_annotations(source, source_root)
     if not annotations:
         raise BuildError(f"{source.source_id}: no annotations matched the registry discovery rules")
-    supported = {"pagexml", "alto", "image-text", "hf-image-text", "modern-pdf"}
+    supported = {
+        "pagexml",
+        "alto",
+        "image-text",
+        "hf-image-text",
+        "modern-pdf",
+        "pinkas-webdataset",
+        "foundation-webdataset",
+        "historical-press-pagealto",
+    }
     if source.converter not in supported:
         raise BuildError(
             f"{source.source_id}: converter {source.converter!r} is not a page-OCR v1 converter"
@@ -239,12 +267,62 @@ def _convert_source(
                     metadata.setdefault("document_id_method", "locked_modern_pdf_manifest_v1")
                     records.append(record)
                 continue
-            if source.converter in {"pagexml", "alto"}:
-                image_path, image_root = _find_image(annotation, source_root, source)
-                converter = (
-                    convert_pagexml_file if source.converter == "pagexml" else convert_alto_file
+            if source.converter == "hf-image-text" and annotation.suffix.lower() == ".parquet":
+                converted = convert_hf_image_text_parquet(
+                    annotation,
+                    source_root,
+                    build_root,
+                    context,
                 )
-                record = converter(annotation, image_root, context)
+                for record in converted:
+                    metadata = record.get("metadata")
+                    if not isinstance(metadata, dict):
+                        raise ValueError("Parquet converter returned no metadata")
+                    metadata.setdefault("source_annotation_path", relative_annotation.as_posix())
+                    metadata.setdefault("source_page_id", str(record.get("page_id", "")))
+                    records.append(record)
+                continue
+            if source.converter == "pinkas-webdataset":
+                converted = convert_pinkas_webdataset_tar(
+                    annotation,
+                    source_root,
+                    build_root,
+                    context,
+                )
+                for record in converted:
+                    metadata = record.get("metadata")
+                    if not isinstance(metadata, dict):
+                        raise ValueError("Pinkas WebDataset converter returned no metadata")
+                    metadata.setdefault("source_annotation_path", relative_annotation.as_posix())
+                    metadata.setdefault("source_page_id", str(record.get("document_id", "")))
+                    records.append(record)
+                continue
+            if source.converter == "foundation-webdataset":
+                converted = convert_foundation_webdataset_tar(
+                    annotation,
+                    source_root,
+                    build_root,
+                    context,
+                )
+                for record in converted:
+                    metadata = record.get("metadata")
+                    if not isinstance(metadata, dict):
+                        raise ValueError("Foundation WebDataset converter returned no metadata")
+                    metadata.setdefault("source_annotation_path", relative_annotation.as_posix())
+                    metadata.setdefault("source_page_id", str(record.get("document_id", "")))
+                    records.append(record)
+                continue
+            if source.converter in {"pagexml", "alto", "historical-press-pagealto"}:
+                image_path, image_root = _find_image(annotation, source_root, source)
+                if source.converter == "historical-press-pagealto":
+                    record = convert_historical_press_pagealto_file(
+                        annotation, source_root, image_root, context
+                    )
+                else:
+                    converter = (
+                        convert_pagexml_file if source.converter == "pagexml" else convert_alto_file
+                    )
+                    record = converter(annotation, image_root, context)
                 page_id, document_id = _identity(source, relative_annotation, image_path.stem)
                 record["page_id"] = page_id
                 record["document_id"] = document_id
@@ -258,7 +336,14 @@ def _convert_source(
                 if source_root.resolve() not in image_path.parents:
                     raise ValueError("manifest image path escapes source root")
                 document_id_method = "immutable_manifest_document_id_v1"
-        except (OSError, ValueError, ModernPdfError, ET.ParseError, json.JSONDecodeError) as exc:
+        except (
+            OSError,
+            ValueError,
+            HistoricalPressConversionError,
+            ModernPdfError,
+            ET.ParseError,
+            json.JSONDecodeError,
+        ) as exc:
             raise BuildError(f"Cannot convert {annotation}: {exc}") from exc
         relative_image, digest = _copy_image(image_path, build_root, source.source_id)
         image = record["image"]
@@ -272,6 +357,19 @@ def _convert_source(
         metadata["source_image_path"] = image_path.relative_to(source_root).as_posix()
         metadata["document_id_method"] = document_id_method
         records.append(record)
+    if source.converter == "historical-press-pagealto":
+        try:
+            expected_pages = int(source.metadata["expected_pages"])
+            expected_lines = int(source.metadata["expected_lines"])
+            validate_historical_press_corpus(
+                records,
+                expected_pages=expected_pages,
+                expected_lines=expected_lines,
+            )
+        except (KeyError, TypeError, ValueError, HistoricalPressConversionError) as exc:
+            raise BuildError(
+                f"{source.source_id}: historical press inventory validation failed: {exc}"
+            ) from exc
     try:
         return assign_splits(records, source.split)
     except SplitPolicyError as exc:
@@ -312,11 +410,70 @@ def _copy_source_verification_report(
     }
     sanitized_artifacts: list[dict[str, object]] = []
     if marker is None:
-        if not problems:
+        # A source root may have been staged offline instead of acquired by
+        # ``data fetch``.  In that case independently verify every required
+        # immutable file against the registry.  This is stronger than trusting
+        # an absent marker and keeps supplementary/diagnostic roots subject to
+        # the same byte-identity gate as core data.
+        for artifact_id, artifact in sorted(expected.items()):
+            if artifact.url.startswith(("git+", "api+", "bundled:")):
+                problems.append(f"{artifact_id} requires an acquisition marker for {artifact.url}")
+                continue
+            if artifact.checksum is None:
+                problems.append(f"required artifact {artifact_id} has no registry checksum")
+                continue
+            direct = source_root / artifact.filename
+            candidates = [direct] if direct.is_file() else []
+            if not candidates:
+                candidates = sorted(
+                    path
+                    for path in source_root.rglob(Path(artifact.filename).name)
+                    if path.is_file()
+                )
+            if len(candidates) != 1:
+                problems.append(
+                    f"required artifact {artifact_id} has {len(candidates)} local candidates"
+                )
+                continue
+            candidate = candidates[0]
+            digest = hashlib.new(artifact.checksum.algorithm)
+            try:
+                with candidate.open("rb") as handle:
+                    for block in iter(lambda: handle.read(1024 * 1024), b""):
+                        digest.update(block)
+            except OSError as exc:
+                problems.append(f"cannot read required artifact {artifact_id}: {exc}")
+                continue
+            actual = digest.hexdigest().lower()
+            if actual != artifact.checksum.value:
+                problems.append(f"registry checksum mismatch for {artifact_id}")
+                continue
+            size = candidate.stat().st_size
+            if artifact.size_bytes is not None and size != artifact.size_bytes:
+                problems.append(f"registry size mismatch for {artifact_id}")
+                continue
+            sanitized_artifacts.append(
+                {
+                    "artifact_id": artifact_id,
+                    "requested_revision": artifact.revision,
+                    "registry_checksum": {
+                        "algorithm": artifact.checksum.algorithm,
+                        "value": artifact.checksum.value,
+                    },
+                    "actual_sha256": sha256_file(candidate),
+                    "size_bytes": size,
+                }
+            )
+        if not expected:
             problems.append("no .hebocrbench-source.json acquisition marker was supplied")
     else:
         if marker.get("source_id") != source.source_id:
             problems.append(f"acquisition marker belongs to {marker.get('source_id')!r}")
+        if marker.get("source_version") != source.version:
+            problems.append(
+                f"acquisition marker version {marker.get('source_version')!r} "
+                f"differs from registry version {source.version!r}"
+            )
         if marker.get("verification_status") != "verified":
             problems.append("acquisition marker status is not verified")
         raw = marker.get("artifacts", [])
@@ -366,9 +523,10 @@ def _copy_source_verification_report(
         "schema_version": "1.0",
         "source_id": source.source_id,
         "source_version": source.version,
-        "verification_status": "verified_acquisition"
-        if marker is not None and not problems
-        else "unverified",
+        "verification_status": "verified_acquisition" if not problems else "unverified",
+        "verification_method": (
+            "acquisition_marker" if marker is not None else "local_required_artifact_checksums"
+        ),
         "required_artifact_ids": sorted(expected),
         "artifacts": sanitized_artifacts,
         "problems": problems,
@@ -466,6 +624,10 @@ def build_corpus(
     benchmark_version: str,
     profile: str,
     overwrite: bool = False,
+    track_id: str | None = None,
+    profile_scope: str | None = None,
+    parent_dataset_fingerprint: str | None = None,
+    derivation: Mapping[str, object] | None = None,
 ) -> CorpusBuildResult:
     output = Path(output_root)
     selected = registry.select(source_ids=source_ids)
@@ -487,6 +649,24 @@ def build_corpus(
         raise BuildError("Missing source roots for: " + ", ".join(missing_roots))
     if output.exists() and not overwrite:
         raise BuildError(f"Output already exists: {output}")
+    normalized_scope = profile_scope or "full"
+    if normalized_scope not in {"full", "track-component"}:
+        raise BuildError("profile_scope must be 'full' or 'track-component'")
+    if normalized_scope == "track-component" and not track_id:
+        raise BuildError("track-component builds require track_id")
+    if parent_dataset_fingerprint is not None and not re.fullmatch(
+        r"[0-9a-f]{64}", parent_dataset_fingerprint
+    ):
+        raise BuildError("parent_dataset_fingerprint must be a lowercase SHA-256")
+    identity: dict[str, object] = {}
+    if track_id is not None:
+        identity["track_id"] = str(track_id)
+    if profile_scope is not None:
+        identity["profile_scope"] = normalized_scope
+    if parent_dataset_fingerprint is not None:
+        identity["parent_dataset_fingerprint"] = parent_dataset_fingerprint
+    if derivation is not None:
+        identity["derivation"] = dict(derivation)
 
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{output.name}.build-", dir=output.parent))
@@ -547,6 +727,7 @@ def build_corpus(
             "records_sha256": sha256_file(temporary / "gold.jsonl"),
             "stats_sha256": sha256_file(temporary / "stats.json"),
             "image_files": _file_inventory(temporary / "images"),
+            **identity,
         }
         dataset_fingerprint = _canonical_hash(fingerprint_basis)
         lock = {
@@ -582,6 +763,7 @@ def build_corpus(
                 "warnings": len(audit.warnings),
             },
             "files": files,
+            **identity,
         }
         write_json(temporary / "manifest.json", manifest)
 

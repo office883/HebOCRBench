@@ -30,6 +30,27 @@ def test_dangling_combining_mark_is_rejected(gold_page):
     assert any(issue.code == "dangling_combining_mark" for issue in report.errors)
 
 
+def test_exact_locked_source_dangling_mark_span_is_preserved_with_warning(gold_page):
+    line = gold_page["regions"][0]["lines"][0]
+    line["text"] = "\u05a6שלום"
+    line["tags"] = ["source-dangling-combining-mark-preserved"]
+    line["uncertain_spans"] = [
+        {
+            "start": 0,
+            "end": 1,
+            "reason": "source-dangling-combining-mark-preserved",
+            "codepoint": "U+05A6",
+        }
+    ]
+
+    report = validate_gold_records([gold_page])
+
+    assert not any(issue.code == "dangling_combining_mark" for issue in report.errors)
+    assert any(
+        issue.code == "source_dangling_combining_mark_preserved" for issue in report.warnings
+    )
+
+
 def test_polygon_outside_image_is_rejected(gold_page):
     gold_page["regions"][0]["polygon"][0] = [-1, 40]
     report = validate_gold_records([gold_page])

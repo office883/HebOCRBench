@@ -18,8 +18,7 @@ def _ngrams(tokens: Sequence[str], size: int) -> tuple[tuple[str, ...], ...]:
     if size <= 0:
         raise ValueError("ngram size must be positive")
     return tuple(
-        tuple(tokens[index : index + size])
-        for index in range(max(0, len(tokens) - size + 1))
+        tuple(tokens[index : index + size]) for index in range(max(0, len(tokens) - size + 1))
     )
 
 
@@ -41,9 +40,7 @@ def install(engine: Any) -> None:
         result: list[tuple[str, ...]] = []
         for line in comparison_text(text).splitlines():
             anchors = tuple(
-                token
-                for token in engine._comparison_tokens(line)
-                if engine._is_anchor_token(token)
+                token for token in engine._comparison_tokens(line) if engine._is_anchor_token(token)
             )
             result.extend(_ngrams(anchors, 2))
         return tuple(result)
@@ -63,24 +60,16 @@ def install(engine: Any) -> None:
                 "overall": 0.0,
             }
 
-        first_anchors = tuple(
-            token for token in first_tokens if engine._is_anchor_token(token)
-        )
-        second_anchors = tuple(
-            token for token in second_tokens if engine._is_anchor_token(token)
-        )
+        first_anchors = tuple(token for token in first_tokens if engine._is_anchor_token(token))
+        second_anchors = tuple(token for token in second_tokens if engine._is_anchor_token(token))
         first_punctuation = tuple(
             token for token in first_tokens if not engine._is_anchor_token(token)
         )
         second_punctuation = tuple(
             token for token in second_tokens if not engine._is_anchor_token(token)
         )
-        first_critical = tuple(
-            token for token in first_tokens if _is_critical_token(token)
-        )
-        second_critical = tuple(
-            token for token in second_tokens if _is_critical_token(token)
-        )
+        first_critical = tuple(token for token in first_tokens if _is_critical_token(token))
+        second_critical = tuple(token for token in second_tokens if _is_critical_token(token))
 
         anchor_order = (
             float(Levenshtein.normalized_similarity(first_anchors, second_anchors))

@@ -1,0 +1,42 @@
+schema_version: '1.0'
+track:
+  id: biblical-niqqud-synthetic-diagnostic-v1
+  version: 1.0.0
+  title: Synthetic Hebrew niqqud diagnostic (cantillation absent)
+  description: Held-out 500-line synthetic niqqud probe; public-fixed, non-rankable, excluded from headline scores, and not evidence of Biblical or cantillation OCR.
+  official: true
+  task: synthetic-niqqud-diagnostic
+  prediction_mode: oracle-layout
+  accepted_gold_tracks: [biblical_niqqud_synthetic_diagnostic]
+  required_prediction_fields: [page_id, regions, regions.lines.line_id, regions.lines.text]
+  primary_metrics:
+    - recognition.line_gcer
+    - recognition.line_cer
+    - recognition.base_letter_cer
+    - diacritics.mark_f1
+    - diacritics.by_category.vowel.f1
+matching:
+  use_shared_ids: true
+  line_iou_threshold: 0.30
+  region_iou_threshold: 0.50
+conformance:
+  diagnostic_track: biblical_niqqud_synthetic_diagnostic
+  min_exact_line_rate: 0.95
+  min_ltr_run_exact_rate: 0.98
+  min_numeric_exact_rate: 0.99
+  min_bracket_exact_rate: 0.99
+  max_visual_order_failure_count: 0
+  max_bidi_control_count: 0
+  max_unbalanced_bidi_controls: 0
+statistics:
+  bootstrap_samples: 2000
+  confidence: 0.95
+  seed: 20260725
+  worst_page_count: 25
+  worst_slice_min_pages: 10
+slice_fields:
+  - metadata.font.family
+  - metadata.font.style
+  - metadata.source_profile
+  - metadata.cantillation_status
+  - metadata.coverage_scope

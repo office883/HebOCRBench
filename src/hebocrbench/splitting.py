@@ -66,9 +66,7 @@ def _fixed_split(policy: Mapping[str, object]) -> str:
     if split not in _ALLOWED_FIXED_SPLITS:
         raise SplitPolicyError(f"Unsupported fixed split name: {split}")
     ratio = float(raw_ratio)
-    if not math.isfinite(ratio) or not math.isclose(
-        ratio, 1.0, rel_tol=0.0, abs_tol=1e-9
-    ):
+    if not math.isfinite(ratio) or not math.isclose(ratio, 1.0, rel_tol=0.0, abs_tol=1e-9):
         raise SplitPolicyError("fixed strategy ratio must equal 1.0")
     return split
 

@@ -246,17 +246,20 @@ def _verify_sources(
                 f"License acceptance is not recorded for {source.source_id}",
             )
             valid = False
-        if source.status != "core":
-            continue
         locked, reason = _artifact_is_locked(source)
         evidence = verification_map.get(source.source_id)
         status = evidence.get("verification_status") if isinstance(evidence, Mapping) else None
-        if not locked or status != "verified_acquisition":
-            detail = reason or f"acquisition status is {status!r}"
+        required_artifacts = [artifact for artifact in source.artifacts if artifact.required]
+        lock_required = bool(required_artifacts) or source.status == "core"
+        if status != "verified_acquisition" or (lock_required and not locked):
+            detail = (
+                f"acquisition status is {status!r}" if status != "verified_acquisition" else reason
+            )
+            code = "core_source_unverified" if source.status == "core" else "source_unverified"
             report.add(
                 "error",
-                "core_source_unverified",
-                f"Core source {source.source_id} is not independently verified: {detail}",
+                code,
+                f"Source {source.source_id} is not independently verified: {detail}",
             )
             valid = False
     return selected, valid
@@ -285,16 +288,49 @@ def _verify_profile(
     accepted_raw = manifest.get("accepted_source_ids", [])
     accepted = [str(value) for value in accepted_raw] if isinstance(accepted_raw, list) else []
     if profiles is not None and profile_id in profiles.profiles:
-        selection = validate_profile_selection(
-            profiles.profiles[profile_id],
-            selected_source_ids=[source.source_id for source in selected],
-            registry=registry,
-            accepted_source_ids=accepted,
-        )
-        for issue in selection.issues:
-            report.add("error", issue.code, issue.message)
-        if selection.issues:
-            valid = False
+        profile = profiles.profiles[profile_id]
+        if manifest.get("profile_scope", "full") == "track-component":
+            actual = {source.source_id for source in selected}
+            expected = set(profile.source_ids)
+            if not actual or not actual.issubset(expected):
+                report.add(
+                    "error",
+                    "profile_source_mismatch",
+                    (
+                        f"Track component for {profile_id} must select a non-empty subset "
+                        f"of {sorted(expected)}, got {sorted(actual)}"
+                    ),
+                )
+                valid = False
+            for source in selected:
+                if source.license.tier not in profile.allowed_license_tiers:
+                    report.add(
+                        "error",
+                        "profile_license_tier_violation",
+                        (
+                            f"Source {source.source_id} has tier {source.license.tier}, outside "
+                            f"profile policy {profile.allowed_license_tiers}"
+                        ),
+                    )
+                    valid = False
+                if source.license.requires_acceptance and source.source_id not in accepted:
+                    report.add(
+                        "error",
+                        "profile_acceptance_missing",
+                        f"Source {source.source_id} requires explicit license acceptance",
+                    )
+                    valid = False
+        else:
+            selection = validate_profile_selection(
+                profile,
+                selected_source_ids=[source.source_id for source in selected],
+                registry=registry,
+                accepted_source_ids=accepted,
+            )
+            for issue in selection.issues:
+                report.add("error", issue.code, issue.message)
+            if selection.issues:
+                valid = False
     elif any(token in profile_key for token in ("open", "permissive")):
         restricted = [
             source.source_id
@@ -306,14 +342,31 @@ def _verify_profile(
             report.add("error", "profile_license_violation", message)
             report.add("error", "open_profile_restricted_license", message)
             valid = False
-    external = [source.source_id for source in selected if source.license.tier == "external-review"]
-    if external:
+    external = [source for source in selected if source.license.tier == "external-review"]
+    federated = [
+        source.source_id for source in external if source.license.redistribution == "federated-only"
+    ]
+    conditional = [
+        source.source_id for source in external if source.license.redistribution != "federated-only"
+    ]
+    if federated:
         report.add(
-            "error",
-            "external_review_source",
-            "External-review sources cannot be release-certified: " + ", ".join(external),
+            "warning",
+            "external_review_federated_source",
+            (
+                "External-review source bytes are not redistributed; certification binds only "
+                "the verified federated acquisition: " + ", ".join(federated)
+            ),
         )
-        valid = False
+    if conditional:
+        report.add(
+            "warning",
+            "external_review_conditional_source",
+            (
+                "External-review source bytes require source-specific acquisition and are not "
+                "included in the public release bundle: " + ", ".join(conditional)
+            ),
+        )
     return valid
 
 
@@ -334,7 +387,13 @@ def _recompute_fingerprint(lock: Mapping[str, object]) -> str | None:
     )
     if any(key not in lock for key in keys):
         return None
-    return _canonical_hash({key: lock[key] for key in keys})
+    optional = (
+        "track_id",
+        "profile_scope",
+        "parent_dataset_fingerprint",
+        "derivation",
+    )
+    return _canonical_hash({key: lock[key] for key in (*keys, *optional) if key in lock})
 
 
 def _atomic_json(path: Path, payload: object) -> None:
@@ -408,11 +467,23 @@ def certify_release(
     report.checks["registry_fingerprint"] = registry_ok
 
     recomputed = _recompute_fingerprint(lock)
+    identity_keys = (
+        "track_id",
+        "profile_scope",
+        "parent_dataset_fingerprint",
+        "derivation",
+    )
+    identity_ok = all(
+        manifest.get(key) == lock.get(key)
+        for key in identity_keys
+        if key in manifest or key in lock
+    )
     fingerprint_ok = (
         bool(report.dataset_fingerprint)
         and lock.get("dataset_fingerprint") == report.dataset_fingerprint
         and frozen.get("dataset_fingerprint") == report.dataset_fingerprint
         and recomputed == report.dataset_fingerprint
+        and identity_ok
     )
     if not fingerprint_ok:
         report.add(

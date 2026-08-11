@@ -43,6 +43,16 @@ def _row(report_dir: Path) -> dict[str, Any]:
     manifest_path = report_dir / "run_manifest.json"
     manifest = _load_json(manifest_path) if manifest_path.is_file() else {}
     model = manifest.get("model") if isinstance(manifest.get("model"), Mapping) else {}
+    configuration = (
+        manifest.get("configuration") if isinstance(manifest.get("configuration"), Mapping) else {}
+    )
+    suite = (
+        manifest.get("benchmark_suite")
+        if isinstance(manifest.get("benchmark_suite"), Mapping)
+        else {}
+    )
+    inputs = manifest.get("inputs") if isinstance(manifest.get("inputs"), Mapping) else {}
+    gold_input = inputs.get("gold") if isinstance(inputs.get("gold"), Mapping) else {}
     run_id = report_dir.name
     return {
         "run_id": run_id,
@@ -53,6 +63,11 @@ def _row(report_dir: Path) -> dict[str, Any]:
         "evaluator_version": manifest.get("evaluator_version"),
         "conformance": _nested(metrics, "conformance", "status"),
         "certified_rank": None,
+        "diagnostic_rank": None,
+        "official_track_id": configuration.get("official_track_id"),
+        "suite_fingerprint": suite.get("suite_fingerprint"),
+        "dataset_fingerprint": suite.get("dataset_fingerprint"),
+        "gold_sha256": gold_input.get("sha256"),
         "gold_pages": _nested(metrics, "coverage", "gold_pages"),
         "submitted_pages": _nested(metrics, "coverage", "submitted_prediction_pages"),
         "missing_pages": _nested(metrics, "coverage", "missing_prediction_pages"),
@@ -90,7 +105,13 @@ def _row(report_dir: Path) -> dict[str, Any]:
 
 
 def collect_comparison_rows(report_root: str | Path) -> list[dict[str, Any]]:
-    """Load report bundles and assign ranks only to conformant runs."""
+    """Load report bundles and assign non-certified, like-for-like ranks.
+
+    This convenience view never emits an official/certified rank.  A diagnostic
+    rank is assigned only inside a group bound to the same suite, track,
+    dataset and gold bytes.  Official Modern ranking is produced exclusively by
+    the recomputing ``modern-score`` admission path.
+    """
 
     root = Path(report_root)
     if not root.is_dir():
@@ -99,23 +120,43 @@ def collect_comparison_rows(report_root: str | Path) -> list[dict[str, Any]]:
     if not directories:
         raise ValueError(f"No report directories containing metrics.json under {root}")
     rows = [_row(directory) for directory in directories]
-    certified = sorted(
-        (row for row in rows if row.get("conformance") == "conformant"),
-        key=lambda row: (
-            float(row["line_gcer"]) if row.get("line_gcer") is not None else float("inf"),
-            float(row["page_order_gcer"])
-            if row.get("page_order_gcer") is not None
-            else float("inf"),
-            str(row["run_id"]),
-        ),
-    )
-    for rank, row in enumerate(certified, start=1):
-        row["certified_rank"] = rank
+    groups: dict[tuple[str, str, str, str], list[dict[str, Any]]] = {}
+    for row in rows:
+        contract = tuple(
+            str(row.get(field) or "")
+            for field in (
+                "suite_fingerprint",
+                "official_track_id",
+                "dataset_fingerprint",
+                "gold_sha256",
+            )
+        )
+        if (
+            row.get("conformance") == "conformant"
+            and not row.get("oracle_layout")
+            and all(contract)
+        ):
+            groups.setdefault(contract, []).append(row)
+    for group in groups.values():
+        ordered = sorted(
+            group,
+            key=lambda row: (
+                float(row["line_gcer"]) if row.get("line_gcer") is not None else float("inf"),
+                float(row["page_order_gcer"])
+                if row.get("page_order_gcer") is not None
+                else float("inf"),
+                str(row["run_id"]),
+            ),
+        )
+        for rank, row in enumerate(ordered, start=1):
+            row["diagnostic_rank"] = rank
     return sorted(
         rows,
         key=lambda row: (
-            row.get("certified_rank") is None,
-            row.get("certified_rank") or 10**9,
+            row.get("diagnostic_rank") is None,
+            str(row.get("suite_fingerprint") or ""),
+            str(row.get("official_track_id") or ""),
+            row.get("diagnostic_rank") or 10**9,
             float(row["line_gcer"]) if row.get("line_gcer") is not None else float("inf"),
             str(row["run_id"]),
         ),
@@ -151,7 +192,7 @@ def _status_he(value: Any) -> str:
 def _comparison_html(rows: Iterable[Mapping[str, Any]]) -> str:
     body_rows: list[str] = []
     for row in rows:
-        rank = row.get("certified_rank")
+        rank = row.get("diagnostic_rank")
         model = html.escape(str(row.get("model_name") or row.get("run_id")))
         version = row.get("model_version")
         subtitle_parts = []
@@ -210,10 +251,10 @@ td small {{ display:block; color:var(--muted); white-space:normal; max-width:260
 <body><main>
 <header>
 <h1>HebOCRBench — השוואת ריצות</h1>
-<p><strong>דירוג מאושר</strong> ניתן רק לריצות שעברו את שער התאימות. ריצה לא־תואמת נשארת מוצגת לצורכי אבחון, אך אינה מקבלת מקום בדירוג גם אם מספר יחיד נראה מחמיא.</p>
+<p><strong>השוואה אבחונית בלבד.</strong> דירוג בשולחן ניתן רק בתוך אותו track, אותו suite ואותם בתים של gold. הוא אינו דירוג רשמי או מאושר. ציון רשמי נוצר רק ב־modern-score לאחר אימות שורשים והרצה מחדש של המעריך.</p>
 </header>
 <section class="panel"><table>
-<thead><tr><th>דירוג</th><th>מערכת</th><th>שער</th><th>GCER שורות ↓</th><th>GCER סדר עמוד ↓</th><th>CER אותיות בסיס ↓</th><th>Recall ניקוד ↑</th><th>דיוק LTR ↑</th><th>כשלים חזותיים ↓</th><th>סדר קריאה ↑</th><th>Region F1 ↑</th><th>טבלה ↑</th><th>טופס ↑</th><th>p50 ms ↓</th></tr></thead>
+<thead><tr><th>דירוג אבחוני</th><th>מערכת</th><th>שער</th><th>GCER שורות ↓</th><th>GCER סדר עמוד ↓</th><th>CER אותיות בסיס ↓</th><th>Recall ניקוד ↑</th><th>דיוק LTR ↑</th><th>כשלים חזותיים ↓</th><th>סדר קריאה ↑</th><th>Region F1 ↑</th><th>טבלה ↑</th><th>טופס ↑</th><th>p50 ms ↓</th></tr></thead>
 <tbody>{rows_html}</tbody>
 </table></section>
 <p class="note">Oracle layout מסומן במפורש ואינו בר־השוואה למערכת end-to-end בתחום הפריסה. טקסט נמדד בסדר Unicode לוגי; היפוך אינו מעניק נקודות.</p>
@@ -236,7 +277,10 @@ def write_comparison_artifacts(report_root: str | Path, output_dir: str | Path) 
         {
             "benchmark": "HebOCRBench",
             "evaluator_version": __version__,
-            "ranking_policy": "Only conformant runs receive certified_rank; lower line_gcer wins.",
+            "ranking_policy": (
+                "No certified ranks are emitted. diagnostic_rank is assigned only within "
+                "the same suite, official track, dataset and gold SHA-256 group."
+            ),
             "runs": rows,
         },
     )

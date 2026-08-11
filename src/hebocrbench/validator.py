@@ -158,6 +158,7 @@ def _validate_text(
     page_id: str,
     location: str,
     gold: bool,
+    preserved_dangling_indices: set[int] | frozenset[int] | None = None,
 ) -> None:
     if not unicodedata.is_normalized("NFC", text):
         report.add(
@@ -177,11 +178,23 @@ def _validate_text(
             location=location,
         )
     dangling = dangling_combining_mark_indices(text)
-    if dangling:
+    preserved = set(preserved_dangling_indices or ())
+    preserved_dangling = sorted(set(dangling) & preserved)
+    unapproved_dangling = sorted(set(dangling) - preserved)
+    if preserved_dangling:
+        report.add(
+            "warning",
+            "source_dangling_combining_mark_preserved",
+            "Locked upstream source preserves dangling combining marks at indices "
+            f"{preserved_dangling}",
+            page_id=page_id,
+            location=location,
+        )
+    if unapproved_dangling:
         report.add(
             "error" if gold else "warning",
             "dangling_combining_mark",
-            f"Combining mark without a base at indices {dangling}",
+            f"Combining mark without a base at indices {unapproved_dangling}",
             page_id=page_id,
             location=location,
         )
@@ -193,6 +206,26 @@ def _validate_text(
             page_id=page_id,
             location=location,
         )
+
+
+def _preserved_dangling_indices(line: Mapping[str, object]) -> set[int]:
+    """Read exact, explicit source-preservation spans from one gold line."""
+
+    spans = line.get("uncertain_spans", [])
+    if not isinstance(spans, list):
+        return set()
+    approved: set[int] = set()
+    for span in spans:
+        if not isinstance(span, Mapping):
+            continue
+        if span.get("reason") != "source-dangling-combining-mark-preserved":
+            continue
+        start = span.get("start")
+        end = span.get("end")
+        if not isinstance(start, int) or not isinstance(end, int) or start < 0 or end <= start:
+            continue
+        approved.update(range(start, end))
+    return approved
 
 
 def _semantic_validate(
@@ -293,6 +326,7 @@ def _semantic_validate(
                         page_id=page_id,
                         location=f"regions/{region_index}/lines/{line_index}/text",
                         gold=gold,
+                        preserved_dangling_indices=_preserved_dangling_indices(line),
                     )
                 if gold and line.get("language") == "he" and line.get("base_direction") != "rtl":
                     report.add(

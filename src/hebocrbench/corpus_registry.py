@@ -33,6 +33,7 @@ class CorpusArtifact:
     revision: str | None = None
     required: bool = True
     mirrors: tuple[str, ...] = ()
+    ignored_archive_members: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,6 +147,16 @@ def _parse_artifacts(value: object, source_id: str, *, core: bool) -> tuple[Corp
         item = _require_mapping(raw, location)
         url = _require_text(item, "url", location)
         checksum = _parse_checksum(item.get("checksum"), f"{location}.checksum")
+        raw_ignored = item.get("ignored_archive_members", [])
+        if not isinstance(raw_ignored, list):
+            raise RegistryError(f"{location}.ignored_archive_members must be a list")
+        ignored_archive_members = tuple(str(name) for name in raw_ignored)
+        if any(not name for name in ignored_archive_members) or len(
+            set(ignored_archive_members)
+        ) != len(ignored_archive_members):
+            raise RegistryError(
+                f"{location}.ignored_archive_members must contain unique non-empty strings"
+            )
         immutable_download = not url.startswith(("git+", "api+", "bundled:"))
         revision = str(item["revision"]) if item.get("revision") is not None else None
         if core and immutable_download and checksum is None:
@@ -165,6 +176,7 @@ def _parse_artifacts(value: object, source_id: str, *, core: bool) -> tuple[Corp
                 revision=revision,
                 required=bool(item.get("required", True)),
                 mirrors=tuple(str(url) for url in item.get("mirrors", [])),
+                ignored_archive_members=ignored_archive_members,
             )
         )
     return tuple(artifacts)

@@ -1,0 +1,882 @@
+name: Build certified HebOCRBench v1 multi-profile release candidate
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v1.0.0'
+      - 'v1.0.0-*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: modern-v1-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: '3.12'
+  SHARD_COUNT: '8'
+  SELECTION_SHA256: 4c0ebc58784d565f225b8a412ffa93146df4c417de479464f1d9f283ecf7af52
+  EFFECTIVE_SELECTION_SHA256: a68d2b1fd1beda4e68b2d426b137abfc393611fcaefcacde7726932174915acd
+  NOTO_HEBREW_SHA256: 7ef36a2c3593758cdb622e1bdef4f84523e92fbc3ccc667438dd80ff54c2de88
+  NOTO_HEBREW_URL: https://raw.githubusercontent.com/google/fonts/4c1913251a6dd1ba34a6ef4b7a630178d01b88ff/ofl/notosanshebrew/NotoSansHebrew%5Bwdth%2Cwght%5D.ttf
+  REGISTRY_FINGERPRINT: 8c0cc599208d4ca1a4ef3d3ead0a57325c4eaad5f27b346714ab9b8045291bfa
+  PROFILES_FINGERPRINT: a84ada5741ec4d314075775493bc5d57cc5ec271d3d9d495b199a4b9498da173
+  MODERN_SUITE_FINGERPRINT: c68250ec4320485e243171b7d3f86c9b3b526f8ada317eda592cd7289f4df5ea
+  FULL_SUITE_FINGERPRINT: 6d2b847121d307b225ec7e785ded7060f40da20b1d8dee28982ef7da06e032d4
+  PIP_DISABLE_PIP_VERSION_CHECK: '1'
+
+jobs:
+  shards:
+    name: Download locked shard ${{ matrix.shard }}/7
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: true
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - name: Check out the exact release commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Verify and download immutable PDF bytes
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PYTHONPATH="$GITHUB_WORKSPACE/src"
+          python scripts/materialize_selection_shard.py \
+            --lock-root data/locks \
+            --output "$RUNNER_TEMP/shard" \
+            --shard-index "$SHARD_INDEX" \
+            --shard-count "$SHARD_COUNT"
+          python - "$RUNNER_TEMP/shard/SHARD.json" "$SHARD_INDEX" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert payload["schema_version"] == "1.0"
+          assert payload["selection_sha256"] == "4c0ebc58784d565f225b8a412ffa93146df4c417de479464f1d9f283ecf7af52"
+          assert payload["shard_index"] == int(sys.argv[2])
+          assert payload["shard_count"] == 8
+          assert payload["document_count"] == len(payload["documents"])
+          assert payload["document_count"] > 0
+          PY
+
+      - name: Upload verified shard
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: modern-v1-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  build:
+    name: Assemble, certify and package the ten-component suite
+    needs: shards
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      PYTHONPATH: ${{ github.workspace }}/src
+    steps:
+      - name: Check out the exact release commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up pinned Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            .github/modern-v1-build-constraints.txt
+
+      - name: Install the deterministic extraction stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends curl libraqm0 poppler-utils
+          python -m pip install \
+            --requirement .github/modern-v1-build-constraints.txt
+          python - <<'PY'
+          from importlib.metadata import version
+          from PIL import features
+
+          expected = {
+              "Pillow": "12.2.0",
+              "PyMuPDF": "1.28.2",
+              "PyYAML": "6.0.3",
+              "numpy": "2.5.2",
+              "pyarrow": "23.0.1",
+              "python-bidi": "0.6.11",
+              "regex": "2026.7.19",
+          }
+          actual = {name: version(name) for name in expected}
+          assert actual == expected, (actual, expected)
+          assert features.check("raqm"), "Pillow lacks RAQM; Hebrew shaping would be invalid"
+          PY
+
+      - name: Run release-pipeline smoke tests
+        run: |
+          set -euo pipefail
+          python -m pytest -q \
+            tests/test_selection_lock.py \
+            tests/test_modern_public_materializer.py \
+            tests/test_derived_tracks.py \
+            tests/test_certification.py \
+            tests/test_acquisition.py \
+            tests/test_foundation_webdataset_converter.py \
+            tests/test_hf_image_text_converter.py \
+            tests/test_historical_press_converter.py \
+            tests/test_pinkas_webdataset_converter.py \
+            tests/test_full_suite.py \
+            tests/test_modern_suite.py \
+            tests/test_release_build_script.py \
+            tests/test_modern_v1_release_workflow.py
+
+      - name: Download all eight verified shards
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: modern-v1-shard-*
+          path: ${{ runner.temp }}/downloaded-shards
+          merge-multiple: false
+
+      - name: Require the complete shard set
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/shards"
+          for index in 0 1 2 3 4 5 6 7; do
+            source="$RUNNER_TEMP/downloaded-shards/modern-v1-shard-$index"
+            destination=$(printf '%s/shards/shard-%03d' "$RUNNER_TEMP" "$index")
+            test -s "$source/SHARD.json"
+            mv "$source" "$destination"
+          done
+          test "$(find "$RUNNER_TEMP/shards" -mindepth 2 -maxdepth 2 -name SHARD.json -type f | wc -l)" -eq "$SHARD_COUNT"
+
+      - name: Assemble the locked source and apply the reviewed replacement lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/assemble_selection_shards.py \
+            --lock-root data/locks \
+            --shards "$RUNNER_TEMP/shards" \
+            --shard-count "$SHARD_COUNT" \
+            --output "$RUNNER_TEMP/sources/modern-public-documents-v1"
+          python - "$RUNNER_TEMP/sources/modern-public-documents-v1" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          summary = json.loads((root / "evidence/summary.json").read_text(encoding="utf-8"))
+          marker = json.loads((root / ".hebocrbench-source.json").read_text(encoding="utf-8"))
+          replacement_lock = json.loads(
+              Path("data/locks/modern-public-quality-replacements-v1.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          assert summary["selection_sha256"] == os.environ["SELECTION_SHA256"]
+          assert summary["effective_selection_sha256"] == os.environ["EFFECTIVE_SELECTION_SHA256"]
+          assert summary["document_count"] == 146
+          assert summary["selected_page_count"] == 700
+          assert summary["target_reached"] is True
+          assert summary["quality_replacements"] == [
+              {
+                  "add_page": 26,
+                  "document_id": "knesset-bill-12458079",
+                  "pdf_sha256": "6c584719459959d456ad8efce4373960fc99f75767018eec5139e9ed7b7a20c3",
+                  "remove_page": 30,
+              }
+          ]
+          assert replacement_lock["parent_selection_sha256"] == os.environ["SELECTION_SHA256"]
+          assert marker["verification_status"] == "verified"
+          assert marker["source_version"] == "2026-07-26-v1"
+          PY
+
+      - name: Fetch and verify all locked extension and diagnostic sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache="$RUNNER_TEMP/extension-sources"
+          python -m hebocrbench data fetch \
+            --registry corpora/registry.yaml \
+            --source modern-handwriting-lines-v1 \
+            --source historical-pinkas-handwriting-v1 \
+            --source historical-hebrew-press-mixed-v1 \
+            --source biblical-niqqud-synthetic-diagnostic-v1 \
+            --source rashi-print-synthetic-diagnostic-v1 \
+            --cache "$cache" \
+            --extract
+          python -m hebocrbench data verify \
+            --registry corpora/registry.yaml \
+            --source modern-handwriting-lines-v1 \
+            --source historical-pinkas-handwriting-v1 \
+            --source historical-hebrew-press-mixed-v1 \
+            --source biblical-niqqud-synthetic-diagnostic-v1 \
+            --source rashi-print-synthetic-diagnostic-v1 \
+            --cache "$cache"
+
+          for source in biblical-niqqud-synthetic-diagnostic-v1 rashi-print-synthetic-diagnostic-v1; do
+            mkdir -p "$cache/$source/shards"
+            ln "$cache/$source/test-synthetic-mixed-000.tar" \
+              "$cache/$source/shards/test-synthetic-mixed-000.tar"
+          done
+          ln "$cache/biblical-niqqud-synthetic-diagnostic-v1/train-niqqud-000.tar" \
+            "$cache/biblical-niqqud-synthetic-diagnostic-v1/shards/train-niqqud-000.tar"
+          ln "$cache/rashi-print-synthetic-diagnostic-v1/train-rashi-000.tar" \
+            "$cache/rashi-print-synthetic-diagnostic-v1/shards/train-rashi-000.tar"
+
+          python - "$cache" <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          cache = Path(sys.argv[1])
+          registry_lock = json.loads(Path("corpora/registry.lock.json").read_text())
+          profiles_lock = json.loads(Path("corpora/profiles.lock.json").read_text())
+          assert registry_lock["registry_fingerprint"] == os.environ["REGISTRY_FINGERPRINT"]
+          assert profiles_lock["profiles_fingerprint"] == os.environ["PROFILES_FINGERPRINT"]
+          expected_artifacts = {
+              "modern-handwriting-lines-v1": {"locked-human-test-parquet"},
+              "historical-pinkas-handwriting-v1": {"locked-pinkas-test-webdataset"},
+              "historical-hebrew-press-mixed-v1": {
+                  "locked-omilab-hazefira-page-alto-zip"
+              },
+              "biblical-niqqud-synthetic-diagnostic-v1": {
+                  "locked-foundation-synthetic-test",
+                  "locked-foundation-niqqud-train-reference",
+              },
+              "rashi-print-synthetic-diagnostic-v1": {
+                  "locked-foundation-synthetic-test",
+                  "locked-foundation-rashi-train-reference",
+              },
+          }
+          for source_id, artifact_ids in expected_artifacts.items():
+              marker = json.loads(
+                  (cache / source_id / ".hebocrbench-source.json").read_text(encoding="utf-8")
+              )
+              assert marker["source_id"] == source_id
+              assert marker["verification_status"] == "verified"
+              assert {item["artifact_id"] for item in marker["artifacts"]} == artifact_ids
+              assert all(len(item["actual_sha256"]) == 64 for item in marker["artifacts"])
+
+          press = (
+              cache
+              / "historical-hebrew-press-mixed-v1"
+              / "locked-omilab-hazefira-page-alto-zip.extracted"
+              / "120095"
+              / "hazfirahGT2htr+"
+          )
+          assert len(list((press / "page").glob("*.xml"))) == 34
+          assert len(list((press / "alto").glob("*.xml"))) == 34
+          assert not (cache / "modern-handwriting-lines-v1" / "ssdataanalysis-hebrew-htr-curated-v1").exists()
+          PY
+
+      - name: Download and verify the immutable diagnostic font
+        shell: bash
+        run: |
+          set -euo pipefail
+          font="$RUNNER_TEMP/NotoSansHebrew[wdth,wght].ttf"
+          curl --fail --location --silent --show-error \
+            --proto '=https' --proto-redir '=https' \
+            "$NOTO_HEBREW_URL" --output "$font"
+          printf '%s  %s\n' "$NOTO_HEBREW_SHA256" "$font" | sha256sum --check --strict
+          python - "$font" "$RUNNER_TEMP/build-environment.json" <<'PY'
+          from importlib.metadata import version
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import platform
+          import subprocess
+          import sys
+
+          font = Path(sys.argv[1])
+          poppler = subprocess.run(
+              ["pdftotext", "-v"], capture_output=True, check=False, text=True
+          )
+          assert poppler.returncode == 0
+          payload = {
+              "schema_version": "1.0",
+              "source_commit": os.environ["GITHUB_SHA"],
+              "runner_os": os.environ.get("RUNNER_OS"),
+              "python": platform.python_version(),
+              "platform": platform.platform(),
+              "packages": {
+                  name: version(name)
+                  for name in (
+                      "jsonschema",
+                      "numpy",
+                      "Pillow",
+                      "PyMuPDF",
+                      "PyYAML",
+                      "pyarrow",
+                      "python-bidi",
+                      "rapidfuzz",
+                      "referencing",
+                      "regex",
+                      "scipy",
+                      "shapely",
+                  )
+              },
+              "pdftotext_version": (poppler.stderr or poppler.stdout).strip(),
+              "diagnostic_font_sha256": hashlib.sha256(font.read_bytes()).hexdigest(),
+              "selection_sha256": os.environ["SELECTION_SHA256"],
+              "effective_selection_sha256": os.environ["EFFECTIVE_SELECTION_SHA256"],
+          }
+          Path(sys.argv[2]).write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+
+      - name: Generate the locked Unicode and BiDi diagnostic source
+        shell: bash
+        run: |
+          set -euo pipefail
+          font="$RUNNER_TEMP/NotoSansHebrew[wdth,wght].ttf"
+          source="$RUNNER_TEMP/sources/modern-bidi-diagnostic-v1"
+          python -m hebocrbench generate \
+            --output "$source" \
+            --font "$font" \
+            --seed 20260722 \
+            --variants clean,blur,jpeg,low_contrast
+          python - "$source" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          manifest = json.loads((root / "generation_manifest.json").read_text(encoding="utf-8"))
+          assert manifest["page_count"] == 192
+          assert manifest["font"]["sha256"] == os.environ["NOTO_HEBREW_SHA256"]
+          assert manifest["font"]["redistributed"] is False
+          marker = {
+              "artifacts": [],
+              "schema_version": "1.0",
+              "source_id": "modern-bidi-diagnostic-v1",
+              "source_version": "1.0.0",
+              "verification_status": "verified",
+          }
+          (root / ".hebocrbench-source.json").write_text(
+              json.dumps(marker, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Build the two canonical parent roots
+        shell: bash
+        run: |
+          set -euo pipefail
+          roots="$RUNNER_TEMP/roots"
+          mkdir -p "$roots"
+          python -m hebocrbench data build \
+            --registry corpora/registry.yaml \
+            --source modern-bidi-diagnostic-v1 \
+            --source-root "modern-bidi-diagnostic-v1=$RUNNER_TEMP/sources/modern-bidi-diagnostic-v1" \
+            --output "$roots/modern-bidi-v1" \
+            --profile modern-hebrew-print-v1 \
+            --track-id modern-bidi-v1 \
+            --profile-scope track-component
+          python -m hebocrbench data build \
+            --registry corpora/registry.yaml \
+            --source modern-public-documents-v1 \
+            --source-root "modern-public-documents-v1=$RUNNER_TEMP/sources/modern-public-documents-v1" \
+            --output "$roots/modern-page-ocr-v1" \
+            --profile modern-hebrew-print-v1 \
+            --track-id modern-page-ocr-v1 \
+            --profile-scope track-component
+          python - "$roots" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          expected = {
+              "modern-bidi-v1": 192,
+              "modern-page-ocr-v1": 700,
+          }
+          for track_id, pages in expected.items():
+              manifest = json.loads((root / track_id / "manifest.json").read_text(encoding="utf-8"))
+              lock = json.loads((root / track_id / "dataset.lock.json").read_text(encoding="utf-8"))
+              assert manifest["track_id"] == track_id
+              assert manifest["profile_scope"] == "track-component"
+              assert manifest["stats"]["pages"] == pages
+              assert len(manifest["dataset_fingerprint"]) == 64
+              assert lock["dataset_fingerprint"] == manifest["dataset_fingerprint"]
+              assert lock["registry_fingerprint"] == manifest["registry_fingerprint"]
+          PY
+
+      - name: Freeze and certify the parent roots
+        shell: bash
+        run: |
+          set -euo pipefail
+          for track in modern-bidi-v1 modern-page-ocr-v1; do
+            root="$RUNNER_TEMP/roots/$track"
+            python -m hebocrbench data freeze --build-root "$root"
+            python -m hebocrbench release certify \
+              --build-root "$root" \
+              --registry corpora/registry.yaml \
+              --profiles corpora/profiles.yaml
+            test -s "$root/FROZEN.json"
+            test -s "$root/CERTIFIED.json"
+          done
+
+      - name: Derive and certify the four evaluation-only roots
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/build_canonical_tracks.py \
+            --source-root "$RUNNER_TEMP/roots/modern-page-ocr-v1" \
+            --output "$RUNNER_TEMP/evaluation-roots"
+          for track in modern-page-ocr-v1 modern-line-recognition-v1 modern-tables-v1 modern-robustness-v1; do
+            root="$RUNNER_TEMP/evaluation-roots/$track"
+            test -s "$root/gold.jsonl"
+            python -m hebocrbench data freeze --build-root "$root"
+            python -m hebocrbench release certify \
+              --build-root "$root" \
+              --registry corpora/registry.yaml \
+              --profiles corpora/profiles.yaml
+            test -s "$root/FROZEN.json"
+            test -s "$root/CERTIFIED.json"
+          done
+
+      - name: Build freeze and certify all extension and diagnostic roots
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache="$RUNNER_TEMP/extension-sources"
+          roots="$RUNNER_TEMP/extension-roots"
+          mkdir -p "$roots"
+          python -m hebocrbench data build \
+            --registry corpora/registry.yaml \
+            --profiles corpora/profiles.yaml \
+            --source modern-handwriting-lines-v1 \
+            --source-root "modern-handwriting-lines-v1=$cache/modern-handwriting-lines-v1" \
+            --output "$roots/modern-handwriting-v1" \
+            --profile modern-hebrew-handwriting-v1 \
+            --track-id modern-handwriting-v1 \
+            --profile-scope track-component
+          python -m hebocrbench data build \
+            --registry corpora/registry.yaml \
+            --profiles corpora/profiles.yaml \
+            --source historical-pinkas-handwriting-v1 \
+            --source-root "historical-pinkas-handwriting-v1=$cache/historical-pinkas-handwriting-v1" \
+            --output "$roots/historical-pinkas-handwriting-v1" \
+            --profile historical-pinkas-handwriting-v1 \
+            --track-id historical-pinkas-handwriting-v1
+          python -m hebocrbench data build \
+            --registry corpora/registry.yaml \
+            --profiles corpora/profiles.yaml \
+            --source historical-hebrew-press-mixed-v1 \
+            --source-root "historical-hebrew-press-mixed-v1=$cache/historical-hebrew-press-mixed-v1/locked-omilab-hazefira-page-alto-zip.extracted" \
+            --output "$roots/historical-hebrew-press-mixed-v1" \
+            --profile historical-hebrew-press-mixed-v1 \
+            --track-id historical-hebrew-press-mixed-v1
+          python -m hebocrbench data build \
+            --registry corpora/registry.yaml \
+            --profiles corpora/profiles.yaml \
+            --source biblical-niqqud-synthetic-diagnostic-v1 \
+            --source-root "biblical-niqqud-synthetic-diagnostic-v1=$cache/biblical-niqqud-synthetic-diagnostic-v1" \
+            --output "$roots/biblical-niqqud-synthetic-diagnostic-v1" \
+            --profile biblical-niqqud-synthetic-diagnostic-v1 \
+            --track-id biblical-niqqud-synthetic-diagnostic-v1
+          python -m hebocrbench data build \
+            --registry corpora/registry.yaml \
+            --profiles corpora/profiles.yaml \
+            --source rashi-print-synthetic-diagnostic-v1 \
+            --source-root "rashi-print-synthetic-diagnostic-v1=$cache/rashi-print-synthetic-diagnostic-v1" \
+            --output "$roots/rashi-print-synthetic-diagnostic-v1" \
+            --profile rashi-print-synthetic-diagnostic-v1 \
+            --track-id rashi-print-synthetic-diagnostic-v1
+
+          for track in \
+            modern-handwriting-v1 \
+            historical-pinkas-handwriting-v1 \
+            historical-hebrew-press-mixed-v1 \
+            biblical-niqqud-synthetic-diagnostic-v1 \
+            rashi-print-synthetic-diagnostic-v1; do
+            root="$roots/$track"
+            python -m hebocrbench data freeze --build-root "$root"
+            python -m hebocrbench release certify \
+              --build-root "$root" \
+              --registry corpora/registry.yaml \
+              --profiles corpora/profiles.yaml
+            test -s "$root/FROZEN.json"
+            test -s "$root/CERTIFIED.json"
+          done
+
+          python - "$roots" <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          roots = Path(sys.argv[1])
+          expected = {
+              "modern-handwriting-v1": (
+                  964,
+                  "track-component",
+                  "9b0ee1b4c8c230c4b012906cdd3d344e9f25a1325058ed5849fafe579e46767b",
+              ),
+              "historical-pinkas-handwriting-v1": (
+                  266,
+                  "full",
+                  "fb687ec4a77c54db10f6aadb0bc982eceeb71c28083cddd566d6a2d6ba4dcb9d",
+              ),
+              "historical-hebrew-press-mixed-v1": (
+                  34,
+                  "full",
+                  "16aed8a8fc31ae1aaf957fe973b2b1dbdd0f911156f7539a78ceaafe56240143",
+              ),
+              "biblical-niqqud-synthetic-diagnostic-v1": (
+                  500,
+                  "full",
+                  "4c6ecba0b4487213fa95a1a7833fa546e41e2664b91fd9700f915c5c686e38fb",
+              ),
+              "rashi-print-synthetic-diagnostic-v1": (
+                  500,
+                  "full",
+                  "c9e2732ab5ca0467635ae386c84b5d98045973641091887eedf0fd5cbba937a5",
+              ),
+          }
+          for track_id, (pages, profile_scope, fingerprint) in expected.items():
+              root = roots / track_id
+              manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+              certified = json.loads((root / "CERTIFIED.json").read_text(encoding="utf-8"))
+              assert manifest["track_id"] == track_id
+              assert manifest["page_count"] == pages
+              assert manifest["profile_scope"] == profile_scope
+              assert manifest["registry_fingerprint"] == os.environ["REGISTRY_FINGERPRINT"]
+              assert manifest["dataset_fingerprint"] == fingerprint
+              assert certified["certified"] is True
+              assert certified["dataset_fingerprint"] == fingerprint
+          PY
+
+      - name: Build and independently verify the Modern and full-suite locks
+        shell: bash
+        run: |
+          set -euo pipefail
+          suite="$RUNNER_TEMP/modern-suite-v1.lock.json"
+          full_suite="$RUNNER_TEMP/full-suite-v1.lock.json"
+          roots="$RUNNER_TEMP/evaluation-roots"
+          python -m hebocrbench modern-suite build \
+            --registry corpora/registry.yaml \
+            --profiles corpora/profiles.yaml \
+            --profile modern-hebrew-print-v1 \
+            --track-root "modern-bidi-v1=$RUNNER_TEMP/roots/modern-bidi-v1" \
+            --track-root "modern-line-recognition-v1=$roots/modern-line-recognition-v1" \
+            --track-root "modern-page-ocr-v1=$roots/modern-page-ocr-v1" \
+            --track-root "modern-tables-v1=$roots/modern-tables-v1" \
+            --track-root "modern-robustness-v1=$roots/modern-robustness-v1" \
+            --output "$suite"
+          python -m hebocrbench modern-suite verify \
+            --registry corpora/registry.yaml \
+            --profiles corpora/profiles.yaml \
+            --lock "$suite"
+          python -m hebocrbench full-suite build \
+            --registry corpora/registry.yaml \
+            --profiles corpora/profiles.yaml \
+            --component-root "modern-bidi-v1=$RUNNER_TEMP/roots/modern-bidi-v1" \
+            --component-root "modern-line-recognition-v1=$roots/modern-line-recognition-v1" \
+            --component-root "modern-page-ocr-v1=$roots/modern-page-ocr-v1" \
+            --component-root "modern-tables-v1=$roots/modern-tables-v1" \
+            --component-root "modern-robustness-v1=$roots/modern-robustness-v1" \
+            --component-root "modern-handwriting-v1=$RUNNER_TEMP/extension-roots/modern-handwriting-v1" \
+            --component-root "historical-pinkas-handwriting-v1=$RUNNER_TEMP/extension-roots/historical-pinkas-handwriting-v1" \
+            --component-root "historical-hebrew-press-mixed-v1=$RUNNER_TEMP/extension-roots/historical-hebrew-press-mixed-v1" \
+            --component-root "biblical-niqqud-synthetic-diagnostic-v1=$RUNNER_TEMP/extension-roots/biblical-niqqud-synthetic-diagnostic-v1" \
+            --component-root "rashi-print-synthetic-diagnostic-v1=$RUNNER_TEMP/extension-roots/rashi-print-synthetic-diagnostic-v1" \
+            --output "$full_suite"
+          python -m hebocrbench full-suite verify \
+            --registry corpora/registry.yaml \
+            --profiles corpora/profiles.yaml \
+            --lock "$full_suite" \
+            --component-root "modern-bidi-v1=$RUNNER_TEMP/roots/modern-bidi-v1" \
+            --component-root "modern-line-recognition-v1=$roots/modern-line-recognition-v1" \
+            --component-root "modern-page-ocr-v1=$roots/modern-page-ocr-v1" \
+            --component-root "modern-tables-v1=$roots/modern-tables-v1" \
+            --component-root "modern-robustness-v1=$roots/modern-robustness-v1" \
+            --component-root "modern-handwriting-v1=$RUNNER_TEMP/extension-roots/modern-handwriting-v1" \
+            --component-root "historical-pinkas-handwriting-v1=$RUNNER_TEMP/extension-roots/historical-pinkas-handwriting-v1" \
+            --component-root "historical-hebrew-press-mixed-v1=$RUNNER_TEMP/extension-roots/historical-hebrew-press-mixed-v1" \
+            --component-root "biblical-niqqud-synthetic-diagnostic-v1=$RUNNER_TEMP/extension-roots/biblical-niqqud-synthetic-diagnostic-v1" \
+            --component-root "rashi-print-synthetic-diagnostic-v1=$RUNNER_TEMP/extension-roots/rashi-print-synthetic-diagnostic-v1"
+          python - "$suite" "$full_suite" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          suite = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          full_suite = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          expected_modern = {
+              "modern-bidi-v1",
+              "modern-line-recognition-v1",
+              "modern-page-ocr-v1",
+              "modern-tables-v1",
+              "modern-robustness-v1",
+          }
+          expected_full = expected_modern | {
+              "modern-handwriting-v1",
+              "historical-pinkas-handwriting-v1",
+              "historical-hebrew-press-mixed-v1",
+              "biblical-niqqud-synthetic-diagnostic-v1",
+              "rashi-print-synthetic-diagnostic-v1",
+          }
+          expected_missing = {
+              "modern-forms-v1",
+              "biblical-cantillation-real-v1",
+              "rashi-pure-print-real-v1",
+          }
+          assert set(suite["tracks"]) == expected_modern
+          assert suite["suite_fingerprint"] == os.environ["MODERN_SUITE_FINGERPRINT"]
+          assert all(
+              suite["tracks"][track]["maturity"] == "certified"
+              for track in expected_modern
+          )
+          assert all(
+              suite["tracks"][track]["headline"] is True
+              for track in expected_modern
+          )
+          assert full_suite["suite_fingerprint"] == os.environ["FULL_SUITE_FINGERPRINT"]
+          assert full_suite["registry_fingerprint"] == os.environ["REGISTRY_FINGERPRINT"]
+          assert full_suite["profiles_fingerprint"] == os.environ["PROFILES_FINGERPRINT"]
+          certified = {
+              component_id
+              for component_id, component in full_suite["components"].items()
+              if component["status"] == "certified"
+          }
+          missing = {
+              component_id
+              for component_id, component in full_suite["components"].items()
+              if component["status"] == "missing"
+          }
+          assert certified == expected_full
+          assert missing == expected_missing
+          assert full_suite["reporting_policy"]["cross_family_score"] == "forbidden"
+          coverage = full_suite["coverage"]
+          assert coverage["modern_headline_status"] == "complete"
+          assert coverage["modern_headline_missing_components"] == []
+          assert set(coverage["real_public_fixed_extensions_available"]) == {
+              "modern-handwriting-v1",
+              "historical-pinkas-handwriting-v1",
+              "historical-hebrew-press-mixed-v1",
+          }
+          assert coverage["real_public_fixed_extensions_missing"] == []
+          assert set(coverage["synthetic_diagnostics_available"]) == {
+              "biblical-niqqud-synthetic-diagnostic-v1",
+              "rashi-print-synthetic-diagnostic-v1",
+          }
+          assert coverage["synthetic_diagnostics_missing"] == []
+          assert coverage["declared_real_target_coverage"] == "incomplete"
+          assert set(coverage["unresolved_real_coverage_gaps"]) == {
+              "biblical-cantillation-real-v1",
+              "rashi-pure-print-real-v1",
+          }
+          PY
+
+      - name: Run evaluator sanity smoke test
+        run: |
+          set -euo pipefail
+          python -m hebocrbench sanity \
+            --output "$RUNNER_TEMP/sanity" \
+            --font "$RUNNER_TEMP/NotoSansHebrew[wdth,wght].ttf" \
+            --variants clean \
+            --limit 8
+
+      - name: Build and verify release-code artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          release="$RUNNER_TEMP/release"
+          export HEBOCRBENCH_FONT="$RUNNER_TEMP/NotoSansHebrew[wdth,wght].ttf"
+          test -z "$(git status --porcelain --untracked-files=normal)"
+          test -z "$(find "$GITHUB_WORKSPACE" -type d -name '*.egg-info' -print -quit)"
+          python scripts/build_v1_release.py \
+            --root "$GITHUB_WORKSPACE" \
+            --output "$release" \
+            --modern-suite-lock "$RUNNER_TEMP/modern-suite-v1.lock.json" \
+            --full-suite-lock "$RUNNER_TEMP/full-suite-v1.lock.json" \
+            --component-root "modern-bidi-v1=$RUNNER_TEMP/roots/modern-bidi-v1" \
+            --component-root "modern-line-recognition-v1=$RUNNER_TEMP/evaluation-roots/modern-line-recognition-v1" \
+            --component-root "modern-page-ocr-v1=$RUNNER_TEMP/evaluation-roots/modern-page-ocr-v1" \
+            --component-root "modern-tables-v1=$RUNNER_TEMP/evaluation-roots/modern-tables-v1" \
+            --component-root "modern-robustness-v1=$RUNNER_TEMP/evaluation-roots/modern-robustness-v1" \
+            --component-root "modern-handwriting-v1=$RUNNER_TEMP/extension-roots/modern-handwriting-v1" \
+            --component-root "historical-pinkas-handwriting-v1=$RUNNER_TEMP/extension-roots/historical-pinkas-handwriting-v1" \
+            --component-root "historical-hebrew-press-mixed-v1=$RUNNER_TEMP/extension-roots/historical-hebrew-press-mixed-v1" \
+            --component-root "biblical-niqqud-synthetic-diagnostic-v1=$RUNNER_TEMP/extension-roots/biblical-niqqud-synthetic-diagnostic-v1" \
+            --component-root "rashi-print-synthetic-diagnostic-v1=$RUNNER_TEMP/extension-roots/rashi-print-synthetic-diagnostic-v1" \
+            --clean
+          python - "$release/HebOCRBench-v1.0.0-release-manifest.json" \
+            "$RUNNER_TEMP/modern-suite-v1.lock.json" \
+            "$RUNNER_TEMP/full-suite-v1.lock.json" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          modern_suite = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          full_suite = json.loads(Path(sys.argv[3]).read_text(encoding="utf-8"))
+          assert manifest["modern_suite_fingerprint"] == modern_suite["suite_fingerprint"]
+          assert manifest["full_suite_fingerprint"] == full_suite["suite_fingerprint"]
+          assert manifest["modern_suite_fingerprint"] == os.environ["MODERN_SUITE_FINGERPRINT"]
+          assert manifest["full_suite_fingerprint"] == os.environ["FULL_SUITE_FINGERPRINT"]
+          assert set(manifest["headline_tracks"]) == set(modern_suite["tracks"])
+          certified = sorted(
+              component_id
+              for component_id, component in full_suite["components"].items()
+              if component["status"] == "certified"
+          )
+          assert manifest["certified_components"] == certified
+          assert len(certified) == 10
+          assert manifest["all_certified_component_roots_verified"] is True
+          non_modern_profiles = [
+              value
+              for value in manifest["official_profiles"]
+              if not str(value).startswith("modern-")
+          ]
+          if non_modern_profiles:
+              assert manifest["scope"] != "modern-hebrew-only", (
+                  "release manifest claims modern-only scope while publishing "
+                  f"non-modern profiles: {non_modern_profiles}"
+              )
+          PY
+          cd "$release"
+          sha256sum --check --strict HebOCRBench-v1.0.0-SHA256SUMS.txt
+          cd "$GITHUB_WORKSPACE"
+          python scripts/verify_v1_release.py \
+            --root "$GITHUB_WORKSPACE" \
+            --release-dir "$release" \
+            --manifest "$release/HebOCRBench-v1.0.0-release-manifest.json" \
+            --component-root "modern-bidi-v1=$RUNNER_TEMP/roots/modern-bidi-v1" \
+            --component-root "modern-line-recognition-v1=$RUNNER_TEMP/evaluation-roots/modern-line-recognition-v1" \
+            --component-root "modern-page-ocr-v1=$RUNNER_TEMP/evaluation-roots/modern-page-ocr-v1" \
+            --component-root "modern-tables-v1=$RUNNER_TEMP/evaluation-roots/modern-tables-v1" \
+            --component-root "modern-robustness-v1=$RUNNER_TEMP/evaluation-roots/modern-robustness-v1" \
+            --component-root "modern-handwriting-v1=$RUNNER_TEMP/extension-roots/modern-handwriting-v1" \
+            --component-root "historical-pinkas-handwriting-v1=$RUNNER_TEMP/extension-roots/historical-pinkas-handwriting-v1" \
+            --component-root "historical-hebrew-press-mixed-v1=$RUNNER_TEMP/extension-roots/historical-hebrew-press-mixed-v1" \
+            --component-root "biblical-niqqud-synthetic-diagnostic-v1=$RUNNER_TEMP/extension-roots/biblical-niqqud-synthetic-diagnostic-v1" \
+            --component-root "rashi-print-synthetic-diagnostic-v1=$RUNNER_TEMP/extension-roots/rashi-print-synthetic-diagnostic-v1" \
+            --report "$release/HebOCRBench-v1.0.0-verification.json" \
+            --skip-tests
+          cd "$release"
+          sha256sum HebOCRBench-v1.0.0-verification.json \
+            > HebOCRBench-v1.0.0-verification.json.sha256
+
+      - name: Write non-redistributive certification proof bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof="$RUNNER_TEMP/certification-proof"
+          mkdir -p "$proof/tracks"
+          cp "$RUNNER_TEMP/modern-suite-v1.lock.json" "$proof/"
+          cp "$RUNNER_TEMP/full-suite-v1.lock.json" "$proof/"
+          cp "$RUNNER_TEMP/release/HebOCRBench-v1.0.0-component-proof.json" "$proof/"
+          cp "$RUNNER_TEMP/sources/modern-public-documents-v1/evidence/summary.json" \
+            "$proof/modern-public-selection-summary.json"
+          parent="$RUNNER_TEMP/roots/modern-page-ocr-v1"
+          parent_proof="$proof/derivation-parent-modern-page-ocr-v1"
+          mkdir -p "$parent_proof"
+          cp "$parent/manifest.json" "$parent/dataset.lock.json" \
+            "$parent/FROZEN.json" "$parent/certification.json" \
+            "$parent/CERTIFIED" "$parent/CERTIFIED.json" \
+            "$parent/audit.json" "$parent/stats.json" \
+            "$parent/attribution.jsonl" "$parent/citations.bib" \
+            "$parent_proof/"
+          for track in \
+            modern-bidi-v1 \
+            modern-line-recognition-v1 \
+            modern-page-ocr-v1 \
+            modern-tables-v1 \
+            modern-robustness-v1 \
+            modern-handwriting-v1 \
+            historical-pinkas-handwriting-v1 \
+            historical-hebrew-press-mixed-v1 \
+            biblical-niqqud-synthetic-diagnostic-v1 \
+            rashi-print-synthetic-diagnostic-v1; do
+            case "$track" in
+              modern-bidi-v1)
+                source="$RUNNER_TEMP/roots/$track"
+                ;;
+              modern-line-recognition-v1|modern-page-ocr-v1|modern-tables-v1|modern-robustness-v1)
+                source="$RUNNER_TEMP/evaluation-roots/$track"
+                ;;
+              *)
+                source="$RUNNER_TEMP/extension-roots/$track"
+                ;;
+            esac
+            destination="$proof/tracks/$track"
+            mkdir -p "$destination"
+            cp "$source/manifest.json" "$source/dataset.lock.json" \
+              "$source/FROZEN.json" "$source/certification.json" \
+              "$source/CERTIFIED" "$source/CERTIFIED.json" \
+              "$source/audit.json" "$source/stats.json" \
+              "$source/attribution.jsonl" "$source/citations.bib" \
+              "$destination/"
+          done
+          python - "$proof/workflow-status.json" "$proof/PROOF-SHA256SUMS.txt" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = {
+              "schema_version": "1.0",
+              "status": "certified-corpus-release-candidate",
+              "five_track_suite_built": True,
+              "five_track_suite_verified": True,
+              "ten_component_full_suite_built": True,
+              "ten_component_full_suite_verified": True,
+              "release_artifacts_verified": True,
+              "costly_model_baselines_executed_by_this_workflow": False,
+              "publication_note": (
+                  "This deterministic workflow certifies corpus and evaluator artifacts. "
+                  "Independent model baselines are a separate publication gate and are not "
+                  "simulated or claimed here."
+              ),
+          }
+          status_path = Path(sys.argv[1])
+          status_path.write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          proof_root = status_path.parent
+          checksum_path = Path(sys.argv[2])
+          entries = []
+          for path in sorted(item for item in proof_root.rglob("*") if item.is_file()):
+              if path == checksum_path:
+                  continue
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              entries.append(f"{digest}  {path.relative_to(proof_root).as_posix()}\n")
+          checksum_path.write_text("".join(entries), encoding="utf-8")
+          PY
+
+      - name: Upload verified release candidate and certification evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hebocrbench-v1-multi-profile-release-candidate-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/release
+            ${{ runner.temp }}/certification-proof
+            ${{ runner.temp }}/sanity
+            ${{ runner.temp }}/build-environment.json
+          if-no-files-found: error
+          include-hidden-files: true
+          compression-level: 9
+          retention-days: 90

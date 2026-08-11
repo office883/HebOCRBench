@@ -23,19 +23,20 @@ def registry_lock_payload(
                     "algorithm": artifact.checksum.algorithm,
                     "value": artifact.checksum.value,
                 }
-            artifacts.append(
-                {
-                    "archive": artifact.archive,
-                    "artifact_id": artifact.artifact_id,
-                    "checksum": checksum,
-                    "filename": artifact.filename,
-                    "required": artifact.required,
-                    "revision": artifact.revision,
-                    "size_bytes": artifact.size_bytes,
-                    "url": artifact.url,
-                    "mirrors": list(artifact.mirrors),
-                }
-            )
+            locked_artifact: dict[str, object] = {
+                "archive": artifact.archive,
+                "artifact_id": artifact.artifact_id,
+                "checksum": checksum,
+                "filename": artifact.filename,
+                "required": artifact.required,
+                "revision": artifact.revision,
+                "size_bytes": artifact.size_bytes,
+                "url": artifact.url,
+                "mirrors": list(artifact.mirrors),
+            }
+            if artifact.ignored_archive_members:
+                locked_artifact["ignored_archive_members"] = list(artifact.ignored_archive_members)
+            artifacts.append(locked_artifact)
         sources[source_id] = {
             "artifacts": artifacts,
             "citation": dict(source.citation),

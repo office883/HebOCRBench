@@ -165,17 +165,24 @@ def normalize_direction(value: str | None, language: str | None = None) -> str:
 
 
 def image_descriptor(
-    image_path: Path, *, relative_name: str, declared_width: int, declared_height: int
+    image_path: Path,
+    *,
+    relative_name: str,
+    declared_width: int,
+    declared_height: int,
+    dimension_tolerance: int = 0,
 ) -> dict[str, object]:
     if not image_path.is_file():
         raise FileNotFoundError(f"Image referenced by annotation does not exist: {image_path}")
     with Image.open(image_path) as image:
         width, height = image.size
-    if declared_width > 0 and width != declared_width:
+    if dimension_tolerance < 0:
+        raise ValueError("dimension_tolerance must be non-negative")
+    if declared_width > 0 and abs(width - declared_width) > dimension_tolerance:
         raise ValueError(
             f"Image width mismatch for {image_path}: annotation={declared_width}, image={width}"
         )
-    if declared_height > 0 and height != declared_height:
+    if declared_height > 0 and abs(height - declared_height) > dimension_tolerance:
         raise ValueError(
             f"Image height mismatch for {image_path}: annotation={declared_height}, image={height}"
         )

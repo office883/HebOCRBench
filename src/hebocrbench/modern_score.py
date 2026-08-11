@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from .io import sha256_file
 from .modern_suite import DEFAULT_HEADLINE_TRACKS, ModernSuiteSpec, coerce_modern_suite_lock
 from .tracks import TrackError, load_track
 
@@ -231,7 +232,12 @@ def _model_failures(indexed: Mapping[str, Report]) -> list[dict[str, object]]:
         if not isinstance(model, Mapping) or not model:
             missing.append(track_id)
             continue
-        identities[track_id] = dict(model)
+        stable_keys = ("system_id", "family", "name", "version", "artifacts")
+        identity = {key: model[key] for key in stable_keys if key in model}
+        if not identity:
+            missing.append(track_id)
+            continue
+        identities[track_id] = identity
     failures: list[dict[str, object]] = []
     if missing:
         failures.append(
@@ -251,6 +257,59 @@ def _model_failures(indexed: Mapping[str, Report]) -> list[dict[str, object]]:
                 "models": identities,
             }
         )
+    return failures
+
+
+def _verification_failures(
+    indexed: Mapping[str, Report], suite: ModernSuiteSpec
+) -> list[dict[str, object]]:
+    """Require runtime-only evidence emitted by the recomputing scorer.
+
+    ``load_modern_report_bundle`` never trusts or imports this marker from a
+    report directory.  It is attached in memory only after the official scorer
+    has verified the certified roots, prediction bytes, artifact hashes, blind
+    input contract and a fresh evaluator recomputation.
+    """
+
+    failures: list[dict[str, object]] = []
+    for track_id in REQUIRED_PRINT_TRACKS:
+        evidence = indexed[track_id].get("verified_evidence")
+        if not isinstance(evidence, Mapping):
+            failures.append(
+                {
+                    "track_id": track_id,
+                    "reason": "missing official recomputation evidence",
+                }
+            )
+            continue
+        expected = {
+            "schema_version": "1.0",
+            "status": "recomputed_from_locked_inputs",
+            "suite_fingerprint": suite.suite_fingerprint,
+            "track_id": track_id,
+            "dataset_fingerprint": suite.tracks[track_id].dataset_fingerprint,
+            "gold_sha256": suite.tracks[track_id].gold_sha256,
+            "gold_assistance": False,
+            "oracle_layout": False,
+        }
+        for field, value in expected.items():
+            if evidence.get(field) != value:
+                failures.append(
+                    {
+                        "track_id": track_id,
+                        "field": field,
+                        "reason": f"expected {value!r}, got {evidence.get(field)!r}",
+                    }
+                )
+        for field in ("predictions_sha256", "metrics_sha256", "input_mode"):
+            if not isinstance(evidence.get(field), str) or not evidence.get(field):
+                failures.append(
+                    {
+                        "track_id": track_id,
+                        "field": field,
+                        "reason": "official recomputation evidence is incomplete",
+                    }
+                )
     return failures
 
 
@@ -394,19 +453,48 @@ def _form_component(metrics: Mapping[str, Any]) -> dict[str, object]:
 def _robustness_component(metrics: Mapping[str, Any]) -> dict[str, object]:
     recognition = _mapping(metrics.get("recognition"), "robustness.recognition")
     distribution = _mapping(metrics.get("distribution"), "robustness.distribution")
+    paired = _mapping(metrics.get("robustness_pairs"), "robustness.robustness_pairs")
+    coverage = _mapping(paired.get("coverage"), "robustness.robustness_pairs.coverage")
+    if _metric(coverage, "pair_coverage") != 1.0:
+        raise ModernScoreError("modern-robustness-v1 has incomplete clean/degraded pair coverage")
+    macro = _mapping(
+        _mapping(paired.get("summary"), "robustness.robustness_pairs.summary").get("macro"),
+        "robustness.robustness_pairs.summary.macro",
+    )
+    paired_metrics = _mapping(
+        macro.get("metrics"), "robustness.robustness_pairs.summary.macro.metrics"
+    )
+    line_delta = _mapping(
+        paired_metrics.get("line_gcer"),
+        "robustness.robustness_pairs.summary.macro.metrics.line_gcer",
+    )
+    page_delta = _mapping(
+        paired_metrics.get("page_order_gcer"),
+        "robustness.robustness_pairs.summary.macro.metrics.page_order_gcer",
+    )
     return _component(
         (
             (
                 "overall_line_gcer_quality",
                 _quality_from_error(_metric(recognition, "line_gcer")),
-                0.40,
+                0.30,
             ),
             (
                 "p90_page_gcer_quality",
                 _quality_from_error(_metric(distribution, "page_line_gcer_p90")),
-                0.35,
+                0.20,
             ),
-            ("line_exact_rate", _metric(recognition, "line_exact_rate"), 0.25),
+            ("line_exact_rate", _metric(recognition, "line_exact_rate"), 0.15),
+            (
+                "mean_line_gcer_delta_quality",
+                _quality_from_error(max(0.0, _metric(line_delta, "mean_delta"))),
+                0.20,
+            ),
+            (
+                "p90_page_order_gcer_delta_quality",
+                _quality_from_error(max(0.0, _metric(page_delta, "p90_delta"))),
+                0.15,
+            ),
         )
     )
 
@@ -511,7 +599,8 @@ def combine_modern_track_reports(
     suite_failures = _suite_failures(indexed, suite)
     evidence_failures = _contract_failures(indexed)
     model_failures = _model_failures(indexed)
-    if suite_failures or evidence_failures or model_failures:
+    verification_failures = _verification_failures(indexed, suite)
+    if suite_failures or evidence_failures or model_failures or verification_failures:
         return {
             **base,
             "status": "invalid_evidence",
@@ -519,6 +608,7 @@ def combine_modern_track_reports(
             "suite_failures": suite_failures,
             "contract_failures": evidence_failures,
             "model_failures": model_failures,
+            "verification_failures": verification_failures,
             "components": {},
         }
 
@@ -597,6 +687,7 @@ def combine_modern_track_reports(
         "suite_failures": [],
         "contract_failures": [],
         "model_failures": [],
+        "verification_failures": [],
     }
 
 
@@ -617,6 +708,14 @@ def load_modern_report_bundle(path: str | Path) -> dict[str, object]:
         raise ModernScoreError(f"invalid JSON in report bundle {root}: {exc}") from exc
     metrics = dict(_mapping(metrics, f"{root}/metrics.json"))
     manifest = dict(_mapping(manifest, f"{root}/run_manifest.json"))
+    artifacts = _mapping(manifest.get("artifacts"), f"{root}/run_manifest.artifacts")
+    metrics_evidence = _mapping(artifacts.get("metrics"), f"{root}/artifacts.metrics")
+    if metrics_evidence.get("path") != "metrics.json":
+        raise ModernScoreError(f"{root}: metrics artifact path is not canonical")
+    if metrics_evidence.get("size_bytes") != metrics_path.stat().st_size:
+        raise ModernScoreError(f"{root}: metrics.json size differs from run manifest")
+    if metrics_evidence.get("sha256") != sha256_file(metrics_path):
+        raise ModernScoreError(f"{root}: metrics.json hash differs from run manifest")
     configuration = dict(
         _mapping(manifest.get("configuration"), f"{root}/run_manifest.configuration")
     )

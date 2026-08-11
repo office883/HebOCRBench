@@ -1,7 +1,7 @@
 schema_version: '1.0'
 track:
   id: modern-robustness-v1
-  version: 1.0.0
+  version: 1.1.0
   title: Modern Hebrew OCR robustness
   description: Performance on degradation pairs derived from frozen modern source pages with split and ancestry preserved.
   official: true
@@ -13,6 +13,9 @@ track:
     - recognition.page_order_gcer
     - recognition.line_gcer
     - recognition.line_exact_rate
+    - robustness_pairs.coverage.pair_coverage
+    - robustness_pairs.summary.macro.metrics.line_gcer.mean_delta
+    - robustness_pairs.summary.macro.metrics.page_order_gcer.p90_delta
 matching:
   use_shared_ids: false
   line_iou_threshold: 0.30

@@ -87,9 +87,7 @@ def test_preflight_preserves_each_page_rejection_reason(tmp_path, monkeypatch) -
     )
 
     assert accepted == [2]
-    assert records == {
-        2: {"page_id": "accepted-page", "regions": [], "tables": []}
-    }
+    assert records == {2: {"page_id": "accepted-page", "regions": [], "tables": []}}
     assert rejections == [
         {
             "page_number": 1,
@@ -103,9 +101,7 @@ def test_preflight_preserves_each_page_rejection_reason(tmp_path, monkeypatch) -
     ]
 
 
-def test_preflight_prefers_verified_table_page_after_lazy_detection(
-    tmp_path, monkeypatch
-) -> None:
+def test_preflight_prefers_verified_table_page_after_lazy_detection(tmp_path, monkeypatch) -> None:
     evidence = [_evidence(1), _evidence(2)]
     candidate = {
         "document_id": "doc-1",

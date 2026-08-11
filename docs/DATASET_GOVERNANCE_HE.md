@@ -2,14 +2,17 @@
 
 ## Scope governance
 
-הוועדה/maintainers שומרים את v1 בתחום עברית מודרנית בלבד. הוספת שפה, תקופה או משימה חדשה מחייבת track ו־profile נפרדים ואינה משנה בדיעבד את הציון הראשי.
+הוועדה/maintainers שומרים את ה־Modern headline בתחום עברית מודרנית בלבד.
+תקופה או משימה אחרת מחייבת track, profile ומשפחת דיווח נפרדים ואינה משנה
+בדיעבד את הציון הראשי. full-suite משותף הוא manifest זהויות, לא ציון משותף.
 
 ## Split governance
 
 - מסמך, template family, writer ו־source ancestry אינם חוצים splits.
 - כל degradation יורש את split המקור.
-- test gold נשמר בנפרד מחבילת המשתתף.
-- refresh של hidden test יוצר suite fingerprint חדש.
+- evaluation gold נשמר בנפרד מחבילת המשתתף.
+- refresh של evaluation gold יוצר suite fingerprint חדש.
+- public-fixed מתועד ככזה ואינו מקבל טענת unseen/contamination-free.
 
 ## שינויים ותיקונים
 
@@ -17,4 +20,5 @@
 
 ## פרטיות
 
-אין לכלול PII רגיש ללא הצדקה, בסיס שימוש ותהליך הסרה/אנונימיזציה. Hidden test אינו הופך מסמך רגיש למותר.
+אין לכלול PII רגיש ללא הצדקה, בסיס שימוש ותהליך הסרה/אנונימיזציה. הפרדת gold
+מחבילת המשתתף אינה הופכת מסמך רגיש למותר.

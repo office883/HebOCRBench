@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
+import gc
 from statistics import mean
 from typing import Any, Mapping, Sequence
 
@@ -28,6 +29,7 @@ from .diacritics import (
 from .form_metrics import evaluate_form
 from .matching import match_units, remap_prediction_graph
 from .reading_order import ReadingOrderCycleError, reading_order_metrics, topological_order
+from .robustness_metrics import compute_paired_robustness
 from .statistics import bootstrap_document_intervals, quantile
 from .table_metrics import evaluate_table, match_tables
 from .text_metrics import TextEvaluation, evaluate_text
@@ -327,6 +329,7 @@ def evaluate_page(
     prediction: JsonObject,
     *,
     config: BenchmarkConfig | Mapping[str, Any] | None = None,
+    include_line_details: bool = True,
 ) -> PageEvaluation:
     """Evaluate one page, including recognition, order, layout and structure."""
 
@@ -393,26 +396,27 @@ def evaluate_page(
         ):
             hygiene_totals[key] += int(hygiene.get(key, 0))
 
-        line_details.append(
-            {
-                "gold_line_id": None if gold_line is None else gold_line.get("line_id"),
-                "prediction_line_id": None if pred_line is None else pred_line.get("line_id"),
-                "matched_by": matched_by,
-                "reference": reference,
-                "prediction": predicted,
-                "reference_codepoints": codepoint_view(reference),
-                "prediction_codepoints": codepoint_view(predicted),
-                "text": text_result.to_dict(),
-                "diacritics": diacritics.to_dict(),
-                "bidi": {
-                    "visual_order": visual,
-                    "ltr_runs": ltr,
-                    "brackets": brackets,
-                    "word_order": words,
-                    "hygiene": hygiene,
-                },
-            }
-        )
+        if include_line_details:
+            line_details.append(
+                {
+                    "gold_line_id": None if gold_line is None else gold_line.get("line_id"),
+                    "prediction_line_id": None if pred_line is None else pred_line.get("line_id"),
+                    "matched_by": matched_by,
+                    "reference": reference,
+                    "prediction": predicted,
+                    "reference_codepoints": codepoint_view(reference),
+                    "prediction_codepoints": codepoint_view(predicted),
+                    "text": text_result.to_dict(),
+                    "diacritics": diacritics.to_dict(),
+                    "bidi": {
+                        "visual_order": visual,
+                        "ltr_runs": ltr,
+                        "brackets": brackets,
+                        "word_order": words,
+                        "hygiene": hygiene,
+                    },
+                }
+            )
 
     alignments = _alignment_summary(line_evaluations)
     exact_lines = sum(item.exact for item in line_evaluations)
@@ -481,6 +485,7 @@ def evaluate_page(
         "gold_lines": len(gold_lines),
         "prediction_lines": len(pred_lines),
         "matched_or_accounted_line_pairs": len(line_evaluations),
+        "exact_lines": exact_lines,
         "line_cer": error_rate(alignments["codepoint"]),
         "line_gcer": error_rate(alignments["grapheme"]),
         "line_gcer_normalized": (
@@ -552,23 +557,44 @@ def evaluate_page(
         document_id=str(gold.get("document_id", page_id)),
         track=str(gold.get("track", "unknown")),
         metrics=metrics,
-        details={
-            "line_results": line_details,
-            "gold_page_text": page_logical_text(gold),
-            "prediction_page_text": page_logical_text(prediction),
-        },
-        _line_text=line_evaluations,
-        _page_text=page_text_result,
-        _diacritics=diacritic_evaluations,
+        details=(
+            {
+                "line_results": line_details,
+                "gold_page_text": page_logical_text(gold),
+                "prediction_page_text": page_logical_text(prediction),
+            }
+            if include_line_details
+            else {"line_results": [], "line_details_compacted": True}
+        ),
+        # Dataset aggregation consumes the already-computed alignment counters
+        # in ``metrics``.  Retaining every line TextEvaluation duplicated long
+        # strings and confusion maps across the 4,900-page robustness track.
+        _line_text=[],
+        _page_text=None,
+        _diacritics=[merged_diacritics],
     )
 
 
 def _aggregate_page_group(pages: Sequence[PageEvaluation]) -> dict[str, Any]:
-    line_evals = [evaluation for page in pages for evaluation in page._line_text]
-    line_alignments = _alignment_summary(line_evals)
-    exact = sum(evaluation.exact for evaluation in line_evals)
-    page_evals = [page._page_text for page in pages if page._page_text is not None]
-    page_graphemes = merge_alignments([item.grapheme for item in page_evals])
+    line_alignments = {
+        name: merge_alignments(
+            [
+                _alignment_from_dict(page.metrics["recognition"]["alignments"][name])
+                for page in pages
+            ]
+        )
+        for name in ("codepoint", "grapheme", "word", "base_letter", "punctuation")
+    }
+    exact = sum(int(page.metrics["recognition"]["exact_lines"]) for page in pages)
+    line_pairs = sum(
+        int(page.metrics["recognition"]["matched_or_accounted_line_pairs"]) for page in pages
+    )
+    page_graphemes = merge_alignments(
+        [
+            _alignment_from_dict(page.metrics["recognition"]["page_alignment"]["grapheme"])
+            for page in pages
+        ]
+    )
     return {
         "pages": len(pages),
         "documents": len({page.document_id for page in pages}),
@@ -577,27 +603,47 @@ def _aggregate_page_group(pages: Sequence[PageEvaluation]) -> dict[str, Any]:
         "line_gcer": error_rate(line_alignments["grapheme"]),
         "line_wer": error_rate(line_alignments["word"]),
         "base_letter_cer": error_rate(line_alignments["base_letter"]),
-        "line_exact_rate": exact / max(1, len(line_evals)),
+        "line_exact_rate": exact / max(1, line_pairs),
         "page_order_gcer": error_rate(page_graphemes),
     }
 
 
 def _aggregate_tables(pages: Sequence[PageEvaluation]) -> dict[str, Any]:
     per_table = [table for page in pages for table in page.metrics["tables"].get("per_table", [])]
+    gold = sum(int(page.metrics["tables"].get("gold_tables", 0)) for page in pages)
+    pred = sum(int(page.metrics["tables"].get("prediction_tables", 0)) for page in pages)
+    matched = sum(int(page.metrics["tables"].get("matched_tables", 0)) for page in pages)
+    missing = sum(int(page.metrics["tables"].get("missing_tables", 0)) for page in pages)
+    hallucinated = sum(int(page.metrics["tables"].get("hallucinated_tables", 0)) for page in pages)
+    precision = 1.0 if gold == pred == 0 else matched / max(1, pred)
+    recall = 1.0 if gold == pred == 0 else matched / max(1, gold)
+    f1 = 0.0 if precision + recall == 0 else 2 * precision * recall / (precision + recall)
     if not per_table:
         return {
-            "gold_tables": 0,
-            "prediction_tables": 0,
+            "metric_family": "HebGrid-1.0",
+            "gold_tables": gold,
+            "prediction_tables": pred,
+            "matched_tables": matched,
+            "missing_tables": missing,
+            "hallucinated_tables": hallucinated,
+            "table_presence_precision": precision,
+            "table_presence_recall": recall,
+            "table_presence_f1": f1,
             "cell_text_gcer": 0.0,
             "cell_span_f1": 1.0,
             "grid_slot_accuracy": 1.0,
         }
     merged = merge_alignments([_alignment_from_dict(item["text_alignment"]) for item in per_table])
     return {
-        "gold_tables": sum(int(page.metrics["tables"].get("gold_tables", 0)) for page in pages),
-        "prediction_tables": sum(
-            int(page.metrics["tables"].get("prediction_tables", 0)) for page in pages
-        ),
+        "metric_family": "HebGrid-1.0",
+        "gold_tables": gold,
+        "prediction_tables": pred,
+        "matched_tables": matched,
+        "missing_tables": missing,
+        "hallucinated_tables": hallucinated,
+        "table_presence_precision": precision,
+        "table_presence_recall": recall,
+        "table_presence_f1": f1,
         "cell_text_gcer": error_rate(merged),
         "cell_span_f1": mean(float(item["cell_span_f1"]) for item in per_table),
         "grid_slot_accuracy": mean(float(item["grid_slot_accuracy"]) for item in per_table),
@@ -745,10 +791,36 @@ def evaluate_dataset(
     config: BenchmarkConfig | Mapping[str, Any] | None = None,
     slice_fields: Sequence[str] | None = None,
 ) -> EvaluationRun:
+    """Evaluate a dataset without repeated cyclic-GC scans of the page graph."""
+
+    gc_was_enabled = gc.isenabled()
+    if gc_was_enabled:
+        gc.disable()
+    try:
+        return _evaluate_dataset_impl(
+            gold_pages,
+            prediction_pages,
+            config=config,
+            slice_fields=slice_fields,
+        )
+    finally:
+        if gc_was_enabled:
+            gc.enable()
+
+
+def _evaluate_dataset_impl(
+    gold_pages: Sequence[JsonObject],
+    prediction_pages: Sequence[JsonObject],
+    *,
+    config: BenchmarkConfig | Mapping[str, Any] | None = None,
+    slice_fields: Sequence[str] | None = None,
+) -> EvaluationRun:
     """Evaluate a dataset and publish micro, macro, slice and uncertainty views."""
 
     effective_config = _coerce_config(config)
     active_slice_fields = tuple(slice_fields or effective_config.slice_fields)
+    gold_tracks = {str(page.get("track", "")) for page in gold_pages}
+    compact_line_details = gold_tracks == {"modern_robustness"}
     gold_index = {str(page["page_id"]): page for page in gold_pages}
     prediction_index = {str(page["page_id"]): page for page in prediction_pages}
     missing_ids = sorted(set(gold_index) - set(prediction_index))
@@ -768,15 +840,46 @@ def evaluate_dataset(
                 "model": {"name": "missing-prediction"},
             },
         )
-        pages.append(evaluate_page(gold, prediction, config=effective_config))
+        pages.append(
+            evaluate_page(
+                gold,
+                prediction,
+                config=effective_config,
+                include_line_details=not compact_line_details,
+            )
+        )
 
-    line_evals = [evaluation for page in pages for evaluation in page._line_text]
-    alignments = _alignment_summary(line_evals)
-    page_evals = [page._page_text for page in pages if page._page_text is not None]
-    page_codepoint = merge_alignments([item.codepoint for item in page_evals])
-    page_grapheme = merge_alignments([item.grapheme for item in page_evals])
-    page_word = merge_alignments([item.word for item in page_evals])
-    exact_lines = sum(item.exact for item in line_evals)
+    alignments = {
+        name: merge_alignments(
+            [
+                _alignment_from_dict(page.metrics["recognition"]["alignments"][name])
+                for page in pages
+            ]
+        )
+        for name in ("codepoint", "grapheme", "word", "base_letter", "punctuation")
+    }
+    page_codepoint = merge_alignments(
+        [
+            _alignment_from_dict(page.metrics["recognition"]["page_alignment"]["codepoint"])
+            for page in pages
+        ]
+    )
+    page_grapheme = merge_alignments(
+        [
+            _alignment_from_dict(page.metrics["recognition"]["page_alignment"]["grapheme"])
+            for page in pages
+        ]
+    )
+    page_word = merge_alignments(
+        [
+            _alignment_from_dict(page.metrics["recognition"]["page_alignment"]["word"])
+            for page in pages
+        ]
+    )
+    exact_lines = sum(int(page.metrics["recognition"]["exact_lines"]) for page in pages)
+    line_pairs = sum(
+        int(page.metrics["recognition"]["matched_or_accounted_line_pairs"]) for page in pages
+    )
 
     per_document: dict[str, list[PageEvaluation]] = defaultdict(list)
     for page in pages:
@@ -807,19 +910,24 @@ def evaluate_dataset(
         "line_wer": error_rate(alignments["word"]),
         "base_letter_cer": error_rate(alignments["base_letter"]),
         "punctuation_error_rate": error_rate(alignments["punctuation"]),
-        "line_exact_rate": exact_lines / max(1, len(line_evals)),
+        "line_exact_rate": exact_lines / max(1, line_pairs),
         "page_order_cer": error_rate(page_codepoint),
         "page_order_gcer": error_rate(page_grapheme),
         "page_order_wer": error_rate(page_word),
         "reading_order_penalty_gcer": error_rate(page_grapheme) - error_rate(grapheme_alignment),
-        "page_exact_rate": sum(item.exact for item in page_evals) / max(1, len(page_evals)),
+        "page_exact_rate": sum(
+            int(bool(page.metrics["recognition"]["page_exact"])) for page in pages
+        )
+        / max(1, len(pages)),
         "macro_page_line_gcer": macro_page,
         "macro_document_line_gcer": macro_document,
         "grapheme_substitution_rate": grapheme_alignment.substitutions
         / max(1, grapheme_alignment.n_ref),
         "grapheme_deletion_rate": grapheme_alignment.deletions / max(1, grapheme_alignment.n_ref),
         "grapheme_insertion_rate": grapheme_alignment.insertions / max(1, grapheme_alignment.n_ref),
-        "final_letter_confusions": sum(item.final_letter_confusions for item in line_evals),
+        "final_letter_confusions": sum(
+            int(page.metrics["recognition"]["final_letter_confusions"]) for page in pages
+        ),
         "alignments": {name: value.to_dict() for name, value in alignments.items()},
     }
 
@@ -985,6 +1093,11 @@ def evaluate_dataset(
         "slices": dict(sorted(slices.items())),
         "conformance": _conformance_gate(pages, effective_config),
     }
+    if gold_tracks == {"modern_robustness"}:
+        metrics["robustness_pairs"] = compute_paired_robustness(
+            gold_pages,
+            [page.to_dict() for page in pages],
+        )
     configuration = effective_config.to_dict()
     configuration.update(
         {
@@ -994,6 +1107,7 @@ def evaluate_dataset(
             "text_order": "Unicode logical order",
             "visual_order_rescue": False,
             "active_slice_fields": list(active_slice_fields),
+            "line_error_details_compacted": compact_line_details,
         }
     )
     return EvaluationRun(metrics=metrics, pages=pages, configuration=configuration)

@@ -142,6 +142,8 @@ def run_tesseract_oracle_layout(
                 "tables": [],
                 "form_fields": [],
                 "model": {
+                    "system_id": f"tesseract::{version}",
+                    "family": "tesseract",
                     "name": "Tesseract",
                     "version": version,
                     "adapter": "tesseract_oracle_layout",

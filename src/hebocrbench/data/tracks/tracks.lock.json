@@ -1,6 +1,30 @@
 {
   "schema_version": "1.0",
   "tracks": {
+    "biblical-niqqud-synthetic-diagnostic-v1": {
+      "config_fingerprint": "39f55fafdcaa818e73e76f07f51b051e350cad7c9be96c9f17c8085702121dd2",
+      "filename": "biblical-niqqud-synthetic-diagnostic-v1.yaml",
+      "prediction_mode": "oracle-layout",
+      "sha256": "a82fcaaabbb93d1d02cb5dba307935f57398091164a969c4516ad23be616ad32",
+      "task": "synthetic-niqqud-diagnostic",
+      "title": "Synthetic Hebrew niqqud diagnostic (cantillation absent)"
+    },
+    "historical-hebrew-press-mixed-v1": {
+      "config_fingerprint": "2e579f0fc7327f1fc62d8b54ec1474f6aa2cb47eee88d5bd6aeff885eaffbb4b",
+      "filename": "historical-hebrew-press-mixed-v1.yaml",
+      "prediction_mode": "oracle-layout",
+      "sha256": "8bf54f28f82e06260daf4bfab2f259de0bb71ce2ae3acf3a9e736f4cd53a3891",
+      "task": "historical-print-text-recognition",
+      "title": "Historical Hebrew press mixed square/Rashi page OCR"
+    },
+    "historical-pinkas-handwriting-v1": {
+      "config_fingerprint": "d735817ec1198c00f42646656ba312be42470e2e8e828025e9ba014477c279cb",
+      "filename": "historical-pinkas-handwriting-v1.yaml",
+      "prediction_mode": "oracle-layout",
+      "sha256": "e21f8729be7515ca67854d1093e047dc36b30b7815e19ea4ec44094250895cc3",
+      "task": "historical-handwriting-text-recognition",
+      "title": "Pinkas historical Hebrew handwriting line recognition"
+    },
     "modern-bidi-v1": {
       "config_fingerprint": "0f4f2144ceaef6219b80f3e1b2415b078b1f59785a33a2d041ed3d5a734fc48d",
       "filename": "modern-bidi-v1.yaml",
@@ -42,10 +66,10 @@
       "title": "Blind end-to-end Modern Hebrew page OCR"
     },
     "modern-robustness-v1": {
-      "config_fingerprint": "b55de5f6fb2bb82ace9eb06af9d16e6ddc0e5fd31fecbb1e8d6df6180267abfa",
+      "config_fingerprint": "28fc87708309999dd891c5062633927c50441edde94a35c4950b0e9330bb99aa",
       "filename": "modern-robustness-v1.yaml",
       "prediction_mode": "end-to-end-page",
-      "sha256": "3af0e101ab907f4bb30a847a72984da7d6492b210a74fdc423da45b37feaa1bc",
+      "sha256": "75a700a4083b1c66119b9ed96b7497553731aa7a9f539e67c8066cb6ad9af37d",
       "task": "robustness",
       "title": "Modern Hebrew OCR robustness"
     },
@@ -56,6 +80,14 @@
       "sha256": "5f602a95090e11c25c5c24bbfc42e5d942aa0ead7b5813253cb0008c957c3e7d",
       "task": "table-recognition",
       "title": "Blind Modern Hebrew table recognition"
+    },
+    "rashi-print-synthetic-diagnostic-v1": {
+      "config_fingerprint": "4cd400415c7aece1644f652f9ec861f2bf4d53b471c3cbf79268ddba01c79ddf",
+      "filename": "rashi-print-synthetic-diagnostic-v1.yaml",
+      "prediction_mode": "oracle-layout",
+      "sha256": "2de4028a849df0c6e54879c585d1d88f8939aa19fcd0b8946ac6691d1103f18c",
+      "task": "synthetic-rashi-print-diagnostic",
+      "title": "Synthetic Noto Rashi Hebrew typeface diagnostic"
     }
   },
   "tracks_version": "1.0.0"

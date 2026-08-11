@@ -191,15 +191,21 @@ def validate_profile_selection(
     selected_source_ids: Sequence[str],
     registry: CorpusRegistry,
     accepted_source_ids: Sequence[str],
+    allow_subset: bool = False,
 ) -> ProfileSelectionReport:
-    """Validate exact source membership, license tiers and explicit acceptance."""
+    """Validate source membership, license tiers and explicit acceptance.
+
+    A track-component root may select a non-empty subset of a larger suite
+    profile. Full profile roots retain exact-membership semantics.
+    """
 
     selected = tuple(sorted(dict.fromkeys(str(value) for value in selected_source_ids)))
     accepted = {str(value) for value in accepted_source_ids}
     issues: list[ProfileSelectionIssue] = []
     expected = set(profile.source_ids)
     actual = set(selected)
-    if actual != expected:
+    membership_valid = bool(actual) and actual <= expected if allow_subset else actual == expected
+    if not membership_valid:
         missing = sorted(expected - actual)
         extra = sorted(actual - expected)
         parts: list[str] = []
@@ -210,7 +216,10 @@ def validate_profile_selection(
         issues.append(
             ProfileSelectionIssue(
                 "profile_source_mismatch",
-                f"Profile {profile.profile_id} source selection differs ({'; '.join(parts)})",
+                (
+                    f"Profile {profile.profile_id} source selection differs "
+                    f"({'; '.join(parts) or 'selection is empty'})"
+                ),
             )
         )
 

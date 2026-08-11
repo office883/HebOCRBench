@@ -9,7 +9,7 @@ from hebocrbench.evaluator import evaluate_dataset
 from hebocrbench.report import write_evaluation_artifacts
 
 
-def test_comparison_writes_certified_ranking_and_rtl_report(tmp_path, gold_page):
+def test_comparison_is_explicitly_non_certified_for_unbound_reports(tmp_path, gold_page):
     reports = tmp_path / "reports"
     write_evaluation_artifacts(
         evaluate_dataset([gold_page], [perfect_prediction(gold_page)]),
@@ -25,7 +25,8 @@ def test_comparison_writes_certified_ranking_and_rtl_report(tmp_path, gold_page)
     paths = write_comparison_artifacts(reports, tmp_path / "comparison")
     payload = json.loads(paths["json"].read_text(encoding="utf-8"))
     by_name = {row["run_id"]: row for row in payload["runs"]}
-    assert by_name["perfect"]["certified_rank"] == 1
+    assert by_name["perfect"]["certified_rank"] is None
+    assert by_name["perfect"]["diagnostic_rank"] is None
     assert by_name["perfect"]["conformance"] == "conformant"
     assert by_name["reversed"]["certified_rank"] is None
     assert by_name["reversed"]["visual_order_failure_count"] > 0
@@ -36,5 +37,5 @@ def test_comparison_writes_certified_ranking_and_rtl_report(tmp_path, gold_page)
 
     html = paths["html"].read_text(encoding="utf-8")
     assert '<html lang="he" dir="rtl">' in html
-    assert "דירוג מאושר" in html
+    assert "השוואה אבחונית בלבד" in html
     assert "לא־תואם" in html

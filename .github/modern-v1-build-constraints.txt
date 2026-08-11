@@ -1,0 +1,21 @@
+# Output-affecting and release-QA dependencies for the certified v1 corpus build.
+#
+# The project metadata keeps supported ranges for normal users.  The release
+# workflow constrains those ranges to the environment that produced the v1
+# reference roots so that font rendering, PDF rasterization and Unicode
+# processing cannot silently drift on a later hosted runner.
+jsonschema==4.26.0
+numpy==2.5.2
+Pillow==12.2.0
+PyMuPDF==1.28.2
+pyarrow==23.0.1
+PyYAML==6.0.3
+python-bidi==0.6.11
+rapidfuzz==3.14.5
+referencing==0.37.0
+regex==2026.7.19
+scipy==1.18.0
+shapely==2.1.2
+pytest==9.1.1
+pytest-cov==7.1.0
+ruff==0.15.22

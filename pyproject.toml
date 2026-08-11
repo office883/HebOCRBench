@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hebocrbench"
 version = "1.0.0"
-description = "State-of-the-art Unicode-, BiDi-, layout- and robustness-aware OCR benchmark for Modern Hebrew documents"
+description = "Unicode-, BiDi-, layout- and robustness-aware OCR benchmark for Hebrew documents"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -26,6 +26,7 @@ dependencies = [
 [project.optional-dependencies]
 bidi = ["python-bidi>=0.6.11,<0.7"]
 corpus = [
+  "pyarrow>=18,<24",
   "requests>=2.32,<3",
 ]
 dev = [

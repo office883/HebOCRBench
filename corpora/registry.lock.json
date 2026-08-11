@@ -1,10 +1,282 @@
 {
   "benchmark": "HebOCRBench",
   "benchmark_version": "1.0.0",
-  "registry_fingerprint": "2958ab9868ce10754ff3ad4144b5abf95b4c32d4c35daf993057f73cf8fe730f",
+  "registry_fingerprint": "8c0cc599208d4ca1a4ef3d3ead0a57325c4eaad5f27b346714ab9b8045291bfa",
   "registry_version": "1.0.0",
   "schema_version": "1.0",
   "sources": {
+    "biblical-niqqud-synthetic-diagnostic-v1": {
+      "artifacts": [
+        {
+          "archive": "none",
+          "artifact_id": "locked-foundation-synthetic-test",
+          "checksum": {
+            "algorithm": "sha256",
+            "value": "12886b77eefb54f73ed2ea9ba9ddf4766de60ed2635126248344739626608927"
+          },
+          "filename": "test-synthetic-mixed-000.tar",
+          "mirrors": [],
+          "required": true,
+          "revision": "1e277f98b17ad2efb9e6b13abbb7a06afe569a03",
+          "size_bytes": 64563200,
+          "url": "https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-foundation-v1/resolve/1e277f98b17ad2efb9e6b13abbb7a06afe569a03/shards/test-synthetic-mixed-000.tar"
+        },
+        {
+          "archive": "none",
+          "artifact_id": "locked-foundation-niqqud-train-reference",
+          "checksum": {
+            "algorithm": "sha256",
+            "value": "05cd60b91ce566b23dd7024665026a615f2127b7abfaf8e8a10afd92d3945ff4"
+          },
+          "filename": "train-niqqud-000.tar",
+          "mirrors": [],
+          "required": true,
+          "revision": "1e277f98b17ad2efb9e6b13abbb7a06afe569a03",
+          "size_bytes": 318689280,
+          "url": "https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-foundation-v1/resolve/1e277f98b17ad2efb9e6b13abbb7a06afe569a03/shards/train-niqqud-000.tar"
+        }
+      ],
+      "citation": {
+        "key": "ssdataanalysis-hebrew-ocr-foundation-niqqud-diagnostic-v1",
+        "text": "ssdataanalysis. Hebrew OCR Foundation v1 synthetic held-out test shard, niqqud profile."
+      },
+      "converter": "foundation-webdataset",
+      "discovery": {
+        "annotation_globs": [
+          "shards/test-synthetic-mixed-000.tar"
+        ],
+        "exclude_globs": [],
+        "image_roots": [
+          "."
+        ],
+        "split_from_path": false
+      },
+      "homepage": "https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-foundation-v1",
+      "languages": [
+        "he"
+      ],
+      "license": {
+        "authority": "Per-sample renderer and font provenance in the locked Hebrew OCR Foundation revision",
+        "conflicts": [
+          "Synthetic public-fixed test data may have appeared in model training; it is not hidden or unseen.",
+          "The locked 500-line subset contains niqqud but zero cantillation marks and cannot establish Biblical OCR coverage."
+        ],
+        "redistribution": "conditional",
+        "requires_acceptance": false,
+        "spdx": "LicenseRef-Owner-Generated-Synthetic-Mixed-Fonts",
+        "tier": "external-review",
+        "uri": null
+      },
+      "metadata": {
+        "benchmark_data_status": "synthetic-public-fixed",
+        "document_type": "synthetic_vocalized_line",
+        "era": "synthetic",
+        "evaluation_partition": "test_synthetic",
+        "expected_cantillation_marks": 0,
+        "expected_niqqud_marks": 12167,
+        "expected_selected_lines": 500,
+        "headline_eligible": false,
+        "layout_type": "line",
+        "rankable": false,
+        "script_style": "synthetic_square_print",
+        "source_collection": "Hebrew OCR Foundation held-out synthetic test",
+        "source_type": "synthetic_rendered_line",
+        "train_font_sha256_overlap": 0,
+        "train_item_id_overlap": 0,
+        "train_source_id_overlap": 0,
+        "train_text_overlap": 0,
+        "vocalization": "full"
+      },
+      "script": "Hebr",
+      "source_version": "1e277f98b17ad2efb9e6b13abbb7a06afe569a03",
+      "split": {
+        "group_fields": [
+          "metadata.source_text_id"
+        ],
+        "ratios": {
+          "diagnostic": 1.0
+        },
+        "seed": 20260725,
+        "strategy": "fixed"
+      },
+      "status": "diagnostic",
+      "task": "synthetic_niqqud_line_diagnostic",
+      "title": "Synthetic vocalized Hebrew held-out diagnostic (no cantillation)",
+      "track": "biblical_niqqud_synthetic_diagnostic"
+    },
+    "historical-hebrew-press-mixed-v1": {
+      "artifacts": [
+        {
+          "archive": "zip",
+          "artifact_id": "locked-omilab-hazefira-page-alto-zip",
+          "checksum": {
+            "algorithm": "sha256",
+            "value": "775e77227cbd46099487d3294d8cfd449ced7c8b6eeb7865ba41f053fe1b0ea8"
+          },
+          "filename": "hazfirahGT2htr-plus.zip",
+          "ignored_archive_members": [
+            "/log.txt"
+          ],
+          "mirrors": [],
+          "required": true,
+          "revision": "4908643b90bde64f56704b7375e49e13028fe049",
+          "size_bytes": 44387813,
+          "url": "https://raw.githubusercontent.com/omilab/historical_press/4908643b90bde64f56704b7375e49e13028fe049/%20hazfirahGT2htr%2B.zip"
+        }
+      ],
+      "citation": {
+        "key": "omilab-hazefira-historical-press-gt-v1",
+        "text": "OmiLab and the Open University of Israel. HaZefira historical Hebrew press ground truth, PAGE XML and ALTO export, repository commit 4908643b90bde64f56704b7375e49e13028fe049."
+      },
+      "converter": "historical-press-pagealto",
+      "discovery": {
+        "annotation_globs": [
+          "120095/hazfirahGT2htr+/page/*.xml"
+        ],
+        "exclude_globs": [],
+        "image_roots": [
+          "120095/hazfirahGT2htr+"
+        ],
+        "split_from_path": false
+      },
+      "homepage": "https://www.openu.ac.il/en/omilab/pages/historicalnewspaper.aspx",
+      "languages": [
+        "he"
+      ],
+      "license": {
+        "authority": "Official OmiLab repository and Open University historical-newspaper project page; no explicit reusable-data license was found in the locked repository",
+        "conflicts": [
+          "Public-fixed gold may have appeared in model training; it is not hidden or unseen.",
+          "Source scans remain federated because the locked repository does not state an explicit reusable-data license.",
+          "The project describes mixed square and Rashi print but supplies no region- or line-level Rashi labels; pure-Rashi results must not be claimed."
+        ],
+        "redistribution": "federated-only",
+        "requires_acceptance": false,
+        "spdx": "LicenseRef-OmiLab-HaZefira-Historical-Press-GT",
+        "tier": "external-review",
+        "uri": "https://github.com/omilab/historical_press"
+      },
+      "metadata": {
+        "annotation_formats": [
+          "PAGE XML 2013-07-15",
+          "ALTO 2.0"
+        ],
+        "benchmark_data_status": "real-public-fixed",
+        "coverage_scope": "narrow-single-newspaper-mixed-square-rashi",
+        "document_type": "newspaper",
+        "era": "historical",
+        "expected_alto_files": 34,
+        "expected_lines": 4016,
+        "expected_pages": 34,
+        "expected_pagexml_files": 34,
+        "headline_eligible": false,
+        "layout_type": "multi_column",
+        "pure_rashi_claim": false,
+        "rankable": true,
+        "rashi_annotation_scope": "none",
+        "script_style": "historical_hebrew_press_mixed_square_rashi",
+        "source_collection": "HaZefira historical Hebrew newspaper",
+        "source_type": "real_historical_print_page_scan",
+        "vocalization": "none"
+      },
+      "script": "Hebr",
+      "source_version": "4908643b90bde64f56704b7375e49e13028fe049",
+      "split": {
+        "group_fields": [
+          "document_id"
+        ],
+        "ratios": {
+          "test": 1.0
+        },
+        "seed": 20260725,
+        "strategy": "fixed"
+      },
+      "status": "supplementary",
+      "task": "historical_print_page_ocr",
+      "title": "HaZefira real historical Hebrew press mixed square/Rashi extension",
+      "track": "historical_hebrew_press_mixed"
+    },
+    "historical-pinkas-handwriting-v1": {
+      "artifacts": [
+        {
+          "archive": "none",
+          "artifact_id": "locked-pinkas-test-webdataset",
+          "checksum": {
+            "algorithm": "sha256",
+            "value": "d986a3527d1ddae19cf2f09f3ff5e84458eeb5e1f6f9cb4e2a48d895dfcd5eb6"
+          },
+          "filename": "historical-pinkas-handwriting-test-v1.tar",
+          "mirrors": [],
+          "required": true,
+          "revision": "ce4d1c347bd4e8b98a23f23256b0ecf01fa663c5",
+          "size_bytes": 418498560,
+          "url": "https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-corpus/resolve/ce4d1c347bd4e8b98a23f23256b0ecf01fa663c5/webdataset/historical_handwriting_lines/test/historical_handwriting_lines-test-00000.tar"
+        }
+      ],
+      "citation": {
+        "key": "pinkas-historical-hebrew-handwriting-v1",
+        "text": "Pinkas historical Hebrew handwriting dataset, Zenodo record 3569694; locked six-page public test subset materialized by HebOCRBench."
+      },
+      "converter": "pinkas-webdataset",
+      "discovery": {
+        "annotation_globs": [
+          "historical-pinkas-handwriting-test-v1.tar"
+        ],
+        "exclude_globs": [],
+        "image_roots": [
+          "."
+        ],
+        "split_from_path": false
+      },
+      "homepage": "https://zenodo.org/records/3569694",
+      "languages": [
+        "he"
+      ],
+      "license": {
+        "authority": "Per-sample source metadata in the locked Hebrew OCR Corpus revision and Zenodo record 3569694",
+        "conflicts": [
+          "Public gold may have appeared in model training; this source is public-fixed, not hidden or unseen.",
+          "The subset is page-disjoint from cached Pinkas training pages, but writer identity is unavailable and writer-disjointness is not claimed."
+        ],
+        "redistribution": "allowed",
+        "requires_acceptance": false,
+        "spdx": "CC-BY-4.0",
+        "tier": "open",
+        "uri": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      "metadata": {
+        "benchmark_data_status": "real-public-fixed",
+        "coverage_scope": "narrow-single-collection",
+        "document_type": "communal_register_manuscript",
+        "era": "historical",
+        "expected_test_lines": 266,
+        "expected_test_pages": 6,
+        "layout_type": "line",
+        "script_style": "historical_hebrew_handwriting",
+        "source_collection": "Pinkas historical Hebrew handwriting",
+        "source_type": "real_manuscript_line_scan",
+        "split_isolation": "page-disjoint-from-cached-train",
+        "vocalization": "none",
+        "writer_disjoint": false,
+        "writer_identity_available": false
+      },
+      "script": "Hebr",
+      "source_version": "ce4d1c347bd4e8b98a23f23256b0ecf01fa663c5",
+      "split": {
+        "group_fields": [
+          "metadata.source_page"
+        ],
+        "ratios": {
+          "test": 1.0
+        },
+        "seed": 20260725,
+        "strategy": "fixed"
+      },
+      "status": "supplementary",
+      "task": "historical_handwriting_line_recognition",
+      "title": "Pinkas real historical Hebrew handwriting public holdout",
+      "track": "historical_pinkas_handwriting"
+    },
     "modern-bidi-diagnostic-v1": {
       "artifacts": [],
       "citation": {
@@ -63,6 +335,20 @@
     },
     "modern-handwriting-lines-v1": {
       "artifacts": [
+        {
+          "archive": "none",
+          "artifact_id": "locked-human-test-parquet",
+          "checksum": {
+            "algorithm": "sha256",
+            "value": "19823993891409e7fc90cac38230822cb88dd2010955a53d4618bfbc226f7d45"
+          },
+          "filename": "stage3_human_finetune/test-00000.parquet",
+          "mirrors": [],
+          "required": true,
+          "revision": "ec4c7074ce2b3edc79889b00319e200d129eecf7",
+          "size_bytes": 18939757,
+          "url": "https://huggingface.co/datasets/ssdataanalysis/hebrew-htr-curated-v1/resolve/ec4c7074ce2b3edc79889b00319e200d129eecf7/stage3_human_finetune/test-00000.parquet"
+        },
         {
           "archive": "git",
           "artifact_id": "hub-repository",
@@ -280,6 +566,105 @@
       "task": "page_ocr",
       "title": "Contemporary Hebrew Public Documents",
       "track": "modern_page_ocr"
+    },
+    "rashi-print-synthetic-diagnostic-v1": {
+      "artifacts": [
+        {
+          "archive": "none",
+          "artifact_id": "locked-foundation-synthetic-test",
+          "checksum": {
+            "algorithm": "sha256",
+            "value": "12886b77eefb54f73ed2ea9ba9ddf4766de60ed2635126248344739626608927"
+          },
+          "filename": "test-synthetic-mixed-000.tar",
+          "mirrors": [],
+          "required": true,
+          "revision": "1e277f98b17ad2efb9e6b13abbb7a06afe569a03",
+          "size_bytes": 64563200,
+          "url": "https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-foundation-v1/resolve/1e277f98b17ad2efb9e6b13abbb7a06afe569a03/shards/test-synthetic-mixed-000.tar"
+        },
+        {
+          "archive": "none",
+          "artifact_id": "locked-foundation-rashi-train-reference",
+          "checksum": {
+            "algorithm": "sha256",
+            "value": "f1adca1ba117160266325b2002abe62896f06986242ef145a34296852f7190ee"
+          },
+          "filename": "train-rashi-000.tar",
+          "mirrors": [],
+          "required": true,
+          "revision": "1e277f98b17ad2efb9e6b13abbb7a06afe569a03",
+          "size_bytes": 118077440,
+          "url": "https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-foundation-v1/resolve/1e277f98b17ad2efb9e6b13abbb7a06afe569a03/shards/train-rashi-000.tar"
+        }
+      ],
+      "citation": {
+        "key": "ssdataanalysis-hebrew-ocr-foundation-rashi-diagnostic-v1",
+        "text": "ssdataanalysis. Hebrew OCR Foundation v1 synthetic held-out test shard, Rashi profile."
+      },
+      "converter": "foundation-webdataset",
+      "discovery": {
+        "annotation_globs": [
+          "shards/test-synthetic-mixed-000.tar"
+        ],
+        "exclude_globs": [],
+        "image_roots": [
+          "."
+        ],
+        "split_from_path": false
+      },
+      "homepage": "https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-foundation-v1",
+      "languages": [
+        "he"
+      ],
+      "license": {
+        "authority": "Per-sample renderer and font provenance in the locked Hebrew OCR Foundation revision",
+        "conflicts": [
+          "Synthetic public-fixed test data may have appeared in model training; it is not hidden or unseen.",
+          "The subset uses one synthetic Noto Rashi Hebrew family and contains no historical page scans."
+        ],
+        "redistribution": "conditional",
+        "requires_acceptance": false,
+        "spdx": "LicenseRef-Owner-Generated-Synthetic-Mixed-Fonts",
+        "tier": "external-review",
+        "uri": null
+      },
+      "metadata": {
+        "benchmark_data_status": "synthetic-public-fixed",
+        "document_type": "synthetic_rashi_line",
+        "era": "synthetic",
+        "evaluation_partition": "test_synthetic",
+        "expected_font_family": "Noto Rashi Hebrew",
+        "expected_selected_lines": 500,
+        "headline_eligible": false,
+        "layout_type": "line",
+        "rankable": false,
+        "script_style": "synthetic_noto_rashi_hebrew",
+        "source_collection": "Hebrew OCR Foundation held-out synthetic test",
+        "source_type": "synthetic_rendered_line",
+        "train_font_family_overlap": 1,
+        "train_font_sha256_overlap": 0,
+        "train_item_id_overlap": 0,
+        "train_source_id_overlap": 0,
+        "train_text_overlap": 0,
+        "vocalization": "none"
+      },
+      "script": "Hebr",
+      "source_version": "1e277f98b17ad2efb9e6b13abbb7a06afe569a03",
+      "split": {
+        "group_fields": [
+          "metadata.source_text_id"
+        ],
+        "ratios": {
+          "diagnostic": 1.0
+        },
+        "seed": 20260725,
+        "strategy": "fixed"
+      },
+      "status": "diagnostic",
+      "task": "synthetic_rashi_line_diagnostic",
+      "title": "Synthetic Noto Rashi Hebrew held-out diagnostic",
+      "track": "rashi_print_synthetic_diagnostic"
     }
   }
 }

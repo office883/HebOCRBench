@@ -1,5 +1,23 @@
 schema_version: "1.0"
 profiles:
+  biblical-niqqud-synthetic-diagnostic-v1:
+    description: Held-out synthetic niqqud diagnostic with zero cantillation; not Biblical coverage.
+    source_ids: [biblical-niqqud-synthetic-diagnostic-v1]
+    allowed_license_classes: [per_item]
+    require_acceptance: false
+    primary_score_only: false
+  historical-hebrew-press-mixed-v1:
+    description: Real public-fixed 34-page HaZefira historical press mixed square/Rashi extension; not a pure-Rashi benchmark.
+    source_ids: [historical-hebrew-press-mixed-v1]
+    allowed_license_classes: [unknown]
+    require_acceptance: false
+    primary_score_only: false
+  historical-pinkas-handwriting-v1:
+    description: Narrow real public-fixed Pinkas historical handwriting extension.
+    source_ids: [historical-pinkas-handwriting-v1]
+    allowed_license_classes: [permissive]
+    require_acceptance: false
+    primary_score_only: false
   modern-print:
     description: Canonical Modern Hebrew printed-document benchmark profile.
     source_ids: [modern_bidi_diagnostic, modern_public_documents]
@@ -17,6 +35,12 @@ profiles:
   modern-handwriting:
     description: Separate writer-disjoint Modern Hebrew handwriting extension.
     source_ids: [modern_handwriting_lines]
+    allowed_license_classes: [per_item]
+    require_acceptance: false
+    primary_score_only: false
+  rashi-print-synthetic-diagnostic-v1:
+    description: Held-out single-family synthetic Rashi typeface diagnostic; not historical-print coverage.
+    source_ids: [rashi-print-synthetic-diagnostic-v1]
     allowed_license_classes: [per_item]
     require_acceptance: false
     primary_score_only: false

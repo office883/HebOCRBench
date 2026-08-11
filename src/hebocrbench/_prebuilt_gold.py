@@ -36,20 +36,14 @@ def install(engine: ModuleType) -> None:
         records: list[dict[str, object]] = []
         for index, raw_record in enumerate(raw_records, start=1):
             if not isinstance(raw_record, Mapping):
-                raise engine.BuildError(
-                    f"{annotation}:{index}: prebuilt record is not an object"
-                )
+                raise engine.BuildError(f"{annotation}:{index}: prebuilt record is not an object")
             record = deepcopy(dict(raw_record))
             page_id = str(record.get("page_id", "")).strip()
             if not page_id:
-                raise engine.BuildError(
-                    f"{annotation}:{index}: prebuilt record has no page_id"
-                )
+                raise engine.BuildError(f"{annotation}:{index}: prebuilt record has no page_id")
             image = record.get("image")
             if not isinstance(image, dict) or not isinstance(image.get("path"), str):
-                raise engine.BuildError(
-                    f"{annotation}:{index}: prebuilt record has no image path"
-                )
+                raise engine.BuildError(f"{annotation}:{index}: prebuilt record has no image path")
             raw_image_path = Path(str(image["path"]))
             if raw_image_path.is_absolute():
                 raise engine.BuildError(
@@ -66,26 +60,18 @@ def install(engine: ModuleType) -> None:
                 )
             actual_digest = engine.sha256_file(image_path)
             declared_digest = str(image.get("sha256", "")).lower().strip()
-            if (
-                declared_digest
-                and declared_digest != "0" * 64
-                and declared_digest != actual_digest
-            ):
+            if declared_digest and declared_digest != "0" * 64 and declared_digest != actual_digest:
                 raise engine.BuildError(
                     f"{annotation}:{index}: prebuilt image SHA-256 mismatch: "
                     f"expected {declared_digest}, got {actual_digest}"
                 )
-            relative_image, digest = engine._copy_image(
-                image_path, build_root, source.source_id
-            )
+            relative_image, digest = engine._copy_image(image_path, build_root, source.source_id)
             image["path"] = relative_image
             image["sha256"] = digest
 
             existing_metadata = record.get("metadata", {})
             if not isinstance(existing_metadata, Mapping):
-                raise engine.BuildError(
-                    f"{annotation}:{index}: prebuilt metadata is not an object"
-                )
+                raise engine.BuildError(f"{annotation}:{index}: prebuilt metadata is not an object")
             annotation_key = f"{relative_annotation.as_posix()}#page_id={page_id}"
             canonical_metadata = context.metadata(annotation_path=annotation_key)
             merged_metadata = dict(canonical_metadata)
@@ -97,6 +83,10 @@ def install(engine: ModuleType) -> None:
             merged_metadata["document_id_method"] = "prebuilt_gold_record_v1"
             record["metadata"] = merged_metadata
             record["split"] = split
+            # The registry is the task contract.  A prebuilt generator may use
+            # internal diagnostic labels, but those labels must never make the
+            # resulting root unevaluable by its official track definition.
+            record["track"] = source.track
             records.append(record)
         return records
 
@@ -110,15 +100,11 @@ def install(engine: ModuleType) -> None:
             )
         records: list[dict[str, object]] = []
         for annotation in annotations:
-            records.extend(
-                convert_prebuilt_gold(source, annotation, source_root, build_root)
-            )
+            records.extend(convert_prebuilt_gold(source, annotation, source_root, build_root))
         try:
             return engine.assign_splits(records, source.split)
         except engine.SplitPolicyError as exc:
-            raise engine.BuildError(
-                f"{source.source_id}: split assignment failed: {exc}"
-            ) from exc
+            raise engine.BuildError(f"{source.source_id}: split assignment failed: {exc}") from exc
 
     engine._convert_prebuilt_gold = convert_prebuilt_gold
     engine._convert_source = convert_source

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from hebocrbench.config import BenchmarkConfig
-from hebocrbench.evaluator import evaluate_page
+from hebocrbench.evaluator import evaluate_dataset, evaluate_page
 from hebocrbench.table_metrics import match_tables
 
 
@@ -89,3 +89,18 @@ def test_missing_and_extra_tables_are_counted_as_presence_errors():
     assert result["hallucinated_tables"] == 1
     assert result["table_presence_precision"] == 0.5
     assert result["table_presence_recall"] == 0.5
+
+
+def test_dataset_table_aggregation_preserves_presence_metrics():
+    gold = _page([_table("g1", 0, "א"), _table("g2", 300, "ב")])
+    prediction = _page([_table("p1", 0, "א")])
+
+    tables = evaluate_dataset([gold], [prediction], config=_blind()).metrics["tables"]
+
+    assert tables["gold_tables"] == 2
+    assert tables["prediction_tables"] == 1
+    assert tables["matched_tables"] == 1
+    assert tables["missing_tables"] == 1
+    assert tables["table_presence_precision"] == 1.0
+    assert tables["table_presence_recall"] == 0.5
+    assert tables["table_presence_f1"] == 2 / 3

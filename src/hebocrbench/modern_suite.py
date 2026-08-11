@@ -216,12 +216,37 @@ def build_modern_suite_lock(
         certified = _read_json_object(certified_path, f"{track_id}.certified")
         if not gold_path.is_file():
             raise ModernSuiteError(f"{track_id}.gold.jsonl is missing")
+        files = manifest.get("files")
+        if not isinstance(files, list):
+            raise ModernSuiteError(f"{track_id}.manifest has no file inventory")
+        for entry in files:
+            if not isinstance(entry, Mapping):
+                raise ModernSuiteError(f"{track_id}.manifest inventory entry is invalid")
+            relative = str(entry.get("path", ""))
+            path = root / relative
+            if not path.is_file():
+                raise ModernSuiteError(f"{track_id}.manifest file is missing: {relative}")
+            if entry.get("size_bytes") != path.stat().st_size:
+                raise ModernSuiteError(f"{track_id}.manifest size is stale: {relative}")
+            if entry.get("sha256") != sha256_file(path):
+                raise ModernSuiteError(f"{track_id}.manifest hash is stale: {relative}")
+        if lock.get("records_sha256") != sha256_file(gold_path):
+            raise ModernSuiteError(f"{track_id}.dataset.lock records_sha256 is stale")
+        stats_path = root / "stats.json"
+        if not stats_path.is_file() or lock.get("stats_sha256") != sha256_file(stats_path):
+            raise ModernSuiteError(f"{track_id}.dataset.lock stats_sha256 is stale")
         if certified.get("certified") is not True:
             raise ModernSuiteError(f"{track_id}.CERTIFIED.json is not certified")
         if manifest.get("benchmark_version") != benchmark_version:
             raise ModernSuiteError(
                 f"{track_id}.manifest benchmark version differs from {benchmark_version}"
             )
+        if manifest.get("track_id") != track_id:
+            raise ModernSuiteError(f"{track_id}.manifest track_id does not bind this suite entry")
+        if manifest.get("profile") != profile_id:
+            raise ModernSuiteError(f"{track_id}.manifest profile differs from {profile_id}")
+        if manifest.get("profile_scope") != "track-component":
+            raise ModernSuiteError(f"{track_id}.manifest must be a certified track-component")
         if certified.get("benchmark_version") != benchmark_version:
             raise ModernSuiteError(
                 f"{track_id}.CERTIFIED.json benchmark version differs from {benchmark_version}"

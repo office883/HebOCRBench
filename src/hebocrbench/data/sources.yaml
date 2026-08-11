@@ -1,5 +1,151 @@
 schema_version: "1.0"
 sources:
+  biblical-niqqud-synthetic-diagnostic-v1:
+    name: Synthetic Vocalized Hebrew Held-Out Diagnostic (No Cantillation)
+    version: 1e277f98b17ad2efb9e6b13abbb7a06afe569a03
+    task: diagnostic
+    languages: [he]
+    script: Hebr
+    role: diagnostic
+    status: available
+    format: Locked Foundation WebDataset test shard with profile filtering
+    primary_score: false
+    landing_page: https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-foundation-v1
+    downloads:
+      - kind: http
+        url: https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-foundation-v1/resolve/1e277f98b17ad2efb9e6b13abbb7a06afe569a03/shards/test-synthetic-mixed-000.tar
+        filename: test-synthetic-mixed-000.tar
+        revision: 1e277f98b17ad2efb9e6b13abbb7a06afe569a03
+        sha256: 12886b77eefb54f73ed2ea9ba9ddf4766de60ed2635126248344739626608927
+        size_bytes: 64563200
+      - kind: http
+        url: https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-foundation-v1/resolve/1e277f98b17ad2efb9e6b13abbb7a06afe569a03/shards/train-niqqud-000.tar
+        filename: train-niqqud-000.tar
+        revision: 1e277f98b17ad2efb9e6b13abbb7a06afe569a03
+        sha256: 05cd60b91ce566b23dd7024665026a615f2127b7abfaf8e8a10afd92d3945ff4
+        size_bytes: 318689280
+    license:
+      expression: LicenseRef-Owner-Generated-Synthetic-Mixed-Fonts
+      class: per_item
+      authority: Per-sample renderer and font provenance in the locked Foundation revision
+      requires_acceptance: false
+      attribution: Hebrew OCR Foundation contributors and per-sample font provenance
+      restrictions:
+        - Synthetic public-fixed diagnostic only; never claim hidden, unseen or real-document evaluation.
+        - Zero cantillation marks; never claim Biblical/cantillation coverage.
+      conflicts: []
+    expected:
+      archive_rows: 5000
+      selected_test_lines: 500
+      profile: niqqud
+      niqqud_marks: 12167
+      cantillation_marks: 0
+      synthetic: true
+      public_fixed: true
+      held_out_test: true
+      train_item_id_overlap: 0
+      train_source_id_overlap: 0
+      train_text_overlap: 0
+      train_font_sha256_overlap: 0
+    split_policy: preserve locked test_synthetic split; fail-closed profile=niqqud filtering; no resplitting
+    importer: foundation_webdataset
+    notes:
+      - Test IDs, source IDs, exact texts, font families and font-file hashes are disjoint from the locked niqqud train shard.
+      - Report only as a separate synthetic diagnostic; the real Biblical/cantillation target remains missing.
+    citations:
+      - https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-foundation-v1
+  historical-pinkas-handwriting-v1:
+    name: Pinkas Real Historical Hebrew Handwriting Public Holdout
+    version: ce4d1c347bd4e8b98a23f23256b0ecf01fa663c5
+    task: line_recognition
+    languages: [he]
+    script: Hebr
+    role: supplemental
+    status: available
+    format: Locked mixed WebDataset TAR with fail-closed Pinkas-only filtering
+    primary_score: false
+    landing_page: https://zenodo.org/records/3569694
+    downloads:
+      - kind: http
+        url: https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-corpus/resolve/ce4d1c347bd4e8b98a23f23256b0ecf01fa663c5/webdataset/historical_handwriting_lines/test/historical_handwriting_lines-test-00000.tar
+        filename: historical-pinkas-handwriting-test-v1.tar
+        revision: ce4d1c347bd4e8b98a23f23256b0ecf01fa663c5
+        sha256: d986a3527d1ddae19cf2f09f3ff5e84458eeb5e1f6f9cb4e2a48d895dfcd5eb6
+        size_bytes: 418498560
+    license:
+      expression: CC-BY-4.0
+      class: permissive
+      authority: Per-sample metadata in the locked corpus revision and Zenodo record 3569694
+      requires_acceptance: false
+      attribution: Pinkas dataset authors and Zenodo record 3569694
+      restrictions:
+        - Public-fixed narrow extension; do not claim hidden or unseen evaluation.
+        - Page-disjoint from cached training pages; writer identity is unavailable and writer-disjointness is not claimed.
+      conflicts: []
+    expected:
+      test_lines: 266
+      test_pages: 6
+      source_dataset: zenodo/pinkas_dataset
+      real_images: true
+      public_fixed: true
+      page_disjoint: true
+      writer_disjoint: false
+      single_collection: true
+      samaritan_rows: 0
+    split_policy: locked upstream test pages 132_1 through 134_2; no resplitting
+    importer: pinkas_webdataset
+    notes:
+      - The source TAR is mixed; the converter admits only source_dataset=zenodo/pinkas_dataset and rejects all Samaritan rows.
+      - Report only as a separate historical handwriting extension, never blended into Modern Hebrew print or handwriting.
+    citations:
+      - https://zenodo.org/records/3569694
+  historical-hebrew-press-mixed-v1:
+    name: HaZefira Real Historical Hebrew Press Mixed Square/Rashi Extension
+    version: 4908643b90bde64f56704b7375e49e13028fe049
+    task: page_ocr
+    languages: [he]
+    script: Hebr
+    role: supplemental
+    status: available
+    format: Locked ZIP with paired PAGE XML 2013-07-15, ALTO 2.0 and real PNG scans
+    primary_score: false
+    landing_page: https://www.openu.ac.il/en/omilab/pages/historicalnewspaper.aspx
+    downloads:
+      - kind: http
+        url: https://raw.githubusercontent.com/omilab/historical_press/4908643b90bde64f56704b7375e49e13028fe049/%20hazfirahGT2htr%2B.zip
+        filename: hazfirahGT2htr-plus.zip
+        revision: 4908643b90bde64f56704b7375e49e13028fe049
+        sha256: 775e77227cbd46099487d3294d8cfd449ced7c8b6eeb7865ba41f053fe1b0ea8
+        size_bytes: 44387813
+    license:
+      expression: LicenseRef-OmiLab-HaZefira-Historical-Press-GT
+      class: unknown
+      authority: Official OmiLab repository and Open University historical-newspaper project page; no explicit reusable-data license was found in the locked repository
+      requires_acceptance: false
+      attribution: OmiLab and the Open University of Israel, HaZefira historical press ground truth
+      restrictions:
+        - Source scans remain federated; the benchmark lock records the official download and checksum.
+        - Public-fixed gold may have appeared in model training; do not claim hidden or unseen evaluation.
+        - No region- or line-level Rashi labels exist; do not report a pure-Rashi score.
+      conflicts: []
+    expected:
+      test_pages: 34
+      test_lines: 4016
+      pagexml_files: 34
+      alto_files: 34
+      real_images: true
+      public_fixed: true
+      single_collection: true
+      mixed_square_rashi_corpus_description: true
+      pure_rashi_annotations: false
+    split_policy: locked official 34-page archive; all pages remain in the separate test extension
+    importer: historical_press_pagealto
+    notes:
+      - PAGE supplies benchmark text and geometry; paired ALTO is checked fail-closed for page, line-ID and non-whitespace-text parity.
+      - Report only as historical Hebrew press mixed square/Rashi, never as a pure-Rashi benchmark.
+    citations:
+      - https://www.openu.ac.il/en/omilab/pages/historicalnewspaper.aspx
+      - https://github.com/omilab/historical_press
   modern_bidi_diagnostic:
     name: HebOCRBench Modern Hebrew Unicode and BiDi Diagnostic Suite
     version: "1.0.0"
@@ -142,3 +288,58 @@ sources:
     importer: hf_image_text
     notes:
       - Real human handwriting only for official evaluation; synthetic handwriting is training support, not benchmark gold.
+  rashi-print-synthetic-diagnostic-v1:
+    name: Synthetic Noto Rashi Hebrew Held-Out Diagnostic
+    version: 1e277f98b17ad2efb9e6b13abbb7a06afe569a03
+    task: diagnostic
+    languages: [he]
+    script: Hebr
+    role: diagnostic
+    status: available
+    format: Locked Foundation WebDataset test shard with profile filtering
+    primary_score: false
+    landing_page: https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-foundation-v1
+    downloads:
+      - kind: http
+        url: https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-foundation-v1/resolve/1e277f98b17ad2efb9e6b13abbb7a06afe569a03/shards/test-synthetic-mixed-000.tar
+        filename: test-synthetic-mixed-000.tar
+        revision: 1e277f98b17ad2efb9e6b13abbb7a06afe569a03
+        sha256: 12886b77eefb54f73ed2ea9ba9ddf4766de60ed2635126248344739626608927
+        size_bytes: 64563200
+      - kind: http
+        url: https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-foundation-v1/resolve/1e277f98b17ad2efb9e6b13abbb7a06afe569a03/shards/train-rashi-000.tar
+        filename: train-rashi-000.tar
+        revision: 1e277f98b17ad2efb9e6b13abbb7a06afe569a03
+        sha256: f1adca1ba117160266325b2002abe62896f06986242ef145a34296852f7190ee
+        size_bytes: 118077440
+    license:
+      expression: LicenseRef-Owner-Generated-Synthetic-Mixed-Fonts
+      class: per_item
+      authority: Per-sample renderer and font provenance in the locked Foundation revision
+      requires_acceptance: false
+      attribution: Hebrew OCR Foundation contributors and Noto Rashi Hebrew font provenance
+      restrictions:
+        - Synthetic public-fixed diagnostic only; never claim hidden, unseen or real historical-print evaluation.
+        - Single typeface family only; not representative of historical Rashi print.
+      conflicts: []
+    expected:
+      archive_rows: 5000
+      selected_test_lines: 500
+      profile: rashi
+      font_family: Noto Rashi Hebrew
+      test_font_files: 3
+      synthetic: true
+      public_fixed: true
+      held_out_test: true
+      train_item_id_overlap: 0
+      train_source_id_overlap: 0
+      train_text_overlap: 0
+      train_font_sha256_overlap: 0
+      train_font_family_overlap: 1
+    split_policy: preserve locked test_synthetic split; fail-closed profile=rashi filtering; no resplitting
+    importer: foundation_webdataset
+    notes:
+      - Test IDs, source IDs, exact texts and font-file hashes are disjoint from the locked Rashi train shard; the Noto Rashi family is shared intentionally.
+      - Report only as a separate synthetic diagnostic; real historical-print coverage remains missing.
+    citations:
+      - https://huggingface.co/datasets/ssdataanalysis/hebrew-ocr-foundation-v1

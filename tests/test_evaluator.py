@@ -1,4 +1,7 @@
 from copy import deepcopy
+import gc
+
+import pytest
 
 from hebocrbench.baselines import (
     empty_prediction,
@@ -70,3 +73,57 @@ def test_dataset_accounts_for_missing_and_extra_pages(gold_page):
     assert run.metrics["coverage"]["missing_prediction_pages"] == 1
     assert run.metrics["coverage"]["extra_prediction_pages"] == 1
     assert run.metrics["recognition"]["line_gcer"] == 1.0
+
+
+def test_dataset_restores_cyclic_gc_after_evaluation_failure():
+    assert gc.isenabled()
+
+    with pytest.raises(KeyError):
+        evaluate_dataset([{}], [])
+
+    assert gc.isenabled()
+
+
+def test_robustness_dataset_publishes_clean_degraded_pair_deltas(gold_page):
+    clean = deepcopy(gold_page)
+    clean.update(
+        {
+            "page_id": "parent::degradation::clean",
+            "document_id": "doc-1",
+            "split": "test",
+            "track": "modern_robustness",
+        }
+    )
+    clean["metadata"].update(
+        {
+            "parent_page_id": "parent",
+            "parent_image_sha256": "a" * 64,
+            "degradation_family": "clean",
+            "degradation_level": "control",
+            "degradation_is_control": True,
+        }
+    )
+    degraded = deepcopy(clean)
+    degraded["page_id"] = "parent::degradation::blur"
+    degraded["metadata"].update(
+        {
+            "degradation_family": "blur",
+            "degradation_level": "medium",
+            "degradation_is_control": False,
+        }
+    )
+    clean_prediction = perfect_prediction(clean)
+    degraded_prediction = empty_prediction(degraded)
+
+    run = evaluate_dataset(
+        [clean, degraded],
+        [clean_prediction, degraded_prediction],
+    )
+
+    paired = run.metrics["robustness_pairs"]
+    assert paired["coverage"]["pair_coverage"] == 1.0
+    assert paired["summary"]["macro"]["metrics"]["line_gcer"]["mean_delta"] == 1.0
+    assert run.configuration["line_error_details_compacted"] is True
+    assert all(
+        page.details == {"line_results": [], "line_details_compacted": True} for page in run.pages
+    )
