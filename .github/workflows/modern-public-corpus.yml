@@ -47,19 +47,12 @@ on:
         description: Render resolution used for benchmark images
         required: true
         default: '200'
-  push:
-    paths:
-      - .github/modern-public-corpus-request.json
-  pull_request:
-    branches: [main]
-    paths:
-      - .github/modern-public-corpus-request.json
 
 permissions:
   contents: read
 
 concurrency:
-  group: modern-public-corpus-v1
+  group: modern-public-corpus-v1-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
