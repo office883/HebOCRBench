@@ -137,6 +137,7 @@ def test_build_corpus_accepts_prebuilt_gold_and_rebinds_provenance(tmp_path: Pat
     assert record["image"]["path"].startswith("images/diag/")
     assert (result.output_root / record["image"]["path"]).is_file()
     assert record["image"]["sha256"] != "0" * 64
+    assert record["track"] == "modern_bidi"
 
 
 def test_prebuilt_gold_rejects_image_path_escape(tmp_path: Path) -> None:

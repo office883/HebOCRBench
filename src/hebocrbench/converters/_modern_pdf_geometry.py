@@ -8,6 +8,7 @@ the characters inside a word.
 
 from __future__ import annotations
 
+from dataclasses import replace
 import unicodedata
 from typing import Any, Sequence
 
@@ -61,13 +62,90 @@ def _resolved_directions(directions: Sequence[str], base_direction: str) -> list
     return result
 
 
+def _has_hebrew_letter(text: str) -> bool:
+    return any("\u05d0" <= char <= "\u05ea" for char in text)
+
+
+def _merge_legacy_nun_fragments(row: Sequence[Any]) -> list[Any]:
+    """Reassemble visually contiguous Hebrew words split at legacy U+00F0.
+
+    The affected cmap emits the visible Hebrew nun as its own word object.
+    Joining is permitted only across a sub-point horizontal gap and only to a
+    neighbouring Hebrew fragment.  This retains ordinary standalone ``נ``
+    tokens and genuine Latin eth characters while restoring the rendered word.
+    """
+
+    visual = sorted(row, key=lambda item: (item.x0, item.order))
+    index = 0
+    while index < len(visual):
+        artifact = visual[index]
+        if "ð" not in str(artifact.text):
+            index += 1
+            continue
+
+        tolerance = max(0.5, float(artifact.height) * 0.08)
+        left = visual[index - 1] if index > 0 else None
+        right = visual[index + 1] if index + 1 < len(visual) else None
+        join_left = bool(
+            left is not None
+            and _has_hebrew_letter(str(left.text))
+            and abs(float(artifact.x0) - float(left.x1)) <= tolerance
+        )
+        join_right = bool(
+            right is not None
+            and _has_hebrew_letter(str(right.text))
+            and abs(float(right.x0) - float(artifact.x1)) <= tolerance
+        )
+
+        raw_artifact = str(artifact.text)
+        nun_count = len(raw_artifact) - len(raw_artifact.lstrip("ð"))
+        suffix = raw_artifact[nun_count:]
+        punctuation_suffix = suffix if suffix and not any(char.isalnum() for char in suffix) else ""
+        repaired_artifact = "נ" * nun_count + ("" if punctuation_suffix else suffix)
+
+        if not join_left and not join_right:
+            visual[index] = replace(
+                artifact,
+                text=repaired_artifact + punctuation_suffix,
+            )
+            index += 1
+            continue
+
+        fragments: list[str] = []
+        merged_items: list[Any] = [artifact]
+        if join_right:
+            assert right is not None
+            fragments.append(str(right.text))
+            merged_items.append(right)
+        fragments.append(repaired_artifact)
+        if join_left:
+            assert left is not None
+            fragments.append(str(left.text))
+            merged_items.append(left)
+
+        merged = replace(
+            artifact,
+            x0=min(float(item.x0) for item in merged_items),
+            y0=min(float(item.y0) for item in merged_items),
+            x1=max(float(item.x1) for item in merged_items),
+            y1=max(float(item.y1) for item in merged_items),
+            text="".join(fragments) + punctuation_suffix,
+            source_word=min(int(item.source_word) for item in merged_items),
+        )
+        start = index - 1 if join_left else index
+        stop = index + 2 if join_right else index + 1
+        visual[start:stop] = [merged]
+        index = max(0, start - 1)
+    return visual
+
+
 def visual_words_to_logical(engine: Any, row: Sequence[Any]) -> list[Any]:
     """Return a logical word sequence from one visual row of word boxes."""
 
-    visual = sorted(row, key=lambda item: (item.x0, item.order))
+    visual = _merge_legacy_nun_fragments(row)
     if not visual:
         return []
-    base_direction = _base_direction(engine, row)
+    base_direction = _base_direction(engine, visual)
     directions = _resolved_directions(
         [_word_direction(item.text) for item in visual],
         base_direction,
@@ -157,5 +235,6 @@ def install(engine: Any) -> None:
         return regions, "\n".join(logical_lines)
 
     engine._word_direction = _word_direction
+    engine._merge_legacy_nun_fragments = _merge_legacy_nun_fragments
     engine._visual_words_to_logical = lambda row: visual_words_to_logical(engine, row)
     engine._extract_regions = extract_regions

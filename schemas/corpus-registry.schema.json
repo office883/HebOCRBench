@@ -78,7 +78,8 @@
             "zip",
             "tar",
             "tar.gz",
-            "tgz"
+            "tgz",
+            "git"
           ]
         },
         "checksum": {
@@ -101,6 +102,14 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "ignored_archive_members": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       },
       "additionalProperties": false
@@ -111,8 +120,7 @@
         "spdx",
         "tier",
         "redistribution",
-        "requires_acceptance",
-        "uri"
+        "requires_acceptance"
       ],
       "properties": {
         "spdx": {
@@ -131,6 +139,7 @@
           "enum": [
             "allowed",
             "conditional",
+            "federated-only",
             "metadata-only",
             "prohibited",
             "unclear"
@@ -142,6 +151,16 @@
         "uri": {
           "type": "string",
           "minLength": 1
+        },
+        "authority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         },
         "notes": {
           "type": "string"
@@ -363,6 +382,10 @@
           "enum": [
             "pagexml",
             "alto",
+            "modern-pdf",
+            "hf-image-text",
+            "pinkas-webdataset",
+            "foundation-webdataset",
             "character-folders",
             "transkribus-export",
             "none"

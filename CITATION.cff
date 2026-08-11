@@ -1,9 +1,9 @@
 cff-version: 1.2.0
 message: "If you use HebOCRBench, cite this software and the exact corpus/suite fingerprints reported by your run."
-title: "HebOCRBench: A Modern Hebrew OCR Benchmark"
+title: "HebOCRBench: A Multi-profile Hebrew OCR Benchmark"
 version: 1.0.0
 type: software
-date-released: 2026-07-26
+date-released: 2026-08-11
 authors:
   - name: HebOCRBench contributors
 repository-code: "https://github.com/office883/HebOCRBench"
@@ -11,12 +11,15 @@ license: MIT
 keywords:
   - OCR
   - Modern Hebrew
+  - Hebrew handwriting
+  - historical Hebrew print
   - RTL
   - Unicode
   - document understanding
   - table recognition
   - robustness
 abstract: >-
-  HebOCRBench evaluates Modern Hebrew OCR in logical Unicode order across
-  line recognition, blind page OCR, reading order, tables, controlled image
-  degradation and mixed Hebrew-Latin bidirectional text.
+  HebOCRBench evaluates Hebrew OCR in logical Unicode order. It defines a
+  guarded five-track Modern Hebrew print headline and reports handwriting,
+  historical print and synthetic diagnostics as separate, non-blended
+  families with explicit real-data coverage gaps.

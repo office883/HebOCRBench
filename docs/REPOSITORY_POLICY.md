@@ -11,7 +11,7 @@ Unrelated repositories must not be used to:
 - transport HebOCRBench source archives or GitHub Actions artifacts;
 - host temporary workflows, payload chunks, corpus snapshots, or benchmark results;
 - trigger HebOCRBench CI jobs;
-- store private organizer data or hidden test truth.
+- store private organizer data or withheld evaluation gold.
 
 All HebOCRBench automation belongs in this repository or in explicitly documented storage owned by this project.
 

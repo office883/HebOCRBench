@@ -84,6 +84,17 @@ def _metrics(track_id):
             {
                 "recognition": {"line_gcer": 0.0, "line_exact_rate": 1.0},
                 "distribution": {"page_line_gcer_p90": 0.0},
+                "robustness_pairs": {
+                    "coverage": {"pair_coverage": 1.0},
+                    "summary": {
+                        "macro": {
+                            "metrics": {
+                                "line_gcer": {"mean_delta": 0.0},
+                                "page_order_gcer": {"p90_delta": 0.0},
+                            }
+                        }
+                    },
+                },
             }
         )
     return base
@@ -114,6 +125,23 @@ def _reports(suite):
                 },
                 "metrics": _metrics(track_id),
                 "run_manifest": {"benchmark_suite": evidence, "model": model},
+                "verified_evidence": {
+                    "schema_version": "1.0",
+                    "status": "recomputed_from_locked_inputs",
+                    "suite_fingerprint": suite.suite_fingerprint,
+                    "track_id": track_id,
+                    "dataset_fingerprint": entry.dataset_fingerprint,
+                    "gold_sha256": entry.gold_sha256,
+                    "predictions_sha256": "d" * 64,
+                    "metrics_sha256": "e" * 64,
+                    "input_mode": (
+                        "blind_whole_line_image"
+                        if track_id == "modern-line-recognition-v1"
+                        else "blind_full_page_image"
+                    ),
+                    "gold_assistance": False,
+                    "oracle_layout": False,
+                },
             }
         )
     return reports
@@ -146,3 +174,41 @@ def test_failed_bidi_gate_blocks_official_rank():
     assert result["status"] == "non_conformant"
     assert result["headline_score"] is None
     assert result["failed_gates"] == ["numeric_exact_rate"]
+
+
+def test_same_model_identity_may_use_track_specific_adapters():
+    suite = _suite()
+    reports = _reports(suite)
+    for index, report in enumerate(reports):
+        report["run_manifest"]["model"] = {
+            "system_id": "tesseract::5.5.3",
+            "family": "tesseract",
+            "name": "Tesseract",
+            "version": "5.5.3",
+            "adapter": "oracle-layout" if index == 1 else "page-e2e",
+            "psm": 7 if index == 1 else 3,
+        }
+
+    result = combine_modern_track_reports(reports, suite_lock=suite)
+
+    assert result["status"] == "rankable"
+    assert not any(
+        failure.get("reason") == "track reports were produced by different model identities"
+        for failure in result.get("failures", [])
+    )
+
+
+def test_incomplete_robustness_pairs_make_metrics_invalid():
+    suite = _suite()
+    reports = _reports(suite)
+    robustness = next(
+        report
+        for report in reports
+        if report["configuration"]["official_track_id"] == "modern-robustness-v1"
+    )
+    robustness["metrics"]["robustness_pairs"]["coverage"]["pair_coverage"] = 0.9
+
+    result = combine_modern_track_reports(reports, suite_lock=suite)
+
+    assert result["status"] == "invalid_metrics"
+    assert "pair coverage" in result["reason"]

@@ -15,7 +15,14 @@ from hebocrbench.corpus_registry import load_registry
 from hebocrbench.io import load_jsonl, write_jsonl
 
 
-def _registry(path: Path, artifact: Path, *, research_nc: bool = False) -> Path:
+def _registry(
+    path: Path,
+    artifact: Path,
+    *,
+    research_nc: bool = False,
+    external_review: bool = False,
+    source_status: str = "core",
+) -> Path:
     digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
     payload = {
         "schema_version": "1.0",
@@ -29,14 +36,28 @@ def _registry(path: Path, artifact: Path, *, research_nc: bool = False) -> Path:
                 "track": "modern_page_ocr",
                 "languages": ["he", "en"],
                 "script": "Hebr",
-                "status": "core",
+                "status": source_status,
                 "converter": "pagexml",
                 "homepage": "https://example.invalid/core",
                 "citation": {"key": "core-page", "text": "Certified fixture"},
                 "license": {
-                    "spdx": "CC-BY-NC-SA-4.0" if research_nc else "CC-BY-4.0",
-                    "tier": "research-nc" if research_nc else "open",
-                    "redistribution": "conditional" if research_nc else "allowed",
+                    "spdx": (
+                        "LicenseRef-Source-Metadata"
+                        if external_review
+                        else "CC-BY-NC-SA-4.0"
+                        if research_nc
+                        else "CC-BY-4.0"
+                    ),
+                    "tier": (
+                        "external-review"
+                        if external_review
+                        else "research-nc"
+                        if research_nc
+                        else "open"
+                    ),
+                    "redistribution": "conditional"
+                    if research_nc or external_review
+                    else "allowed",
                     "requires_acceptance": research_nc,
                     "uri": (
                         "https://creativecommons.org/licenses/by-nc-sa/4.0/"
@@ -81,17 +102,26 @@ def _registry(path: Path, artifact: Path, *, research_nc: bool = False) -> Path:
     return path
 
 
-def _source_tree(tmp_path: Path, artifact: Path, *, verified: bool = True) -> Path:
+def _source_tree(
+    tmp_path: Path,
+    artifact: Path,
+    *,
+    verified: bool = True,
+    local_artifact: bool = False,
+) -> Path:
     root = tmp_path / "source"
     test = root / "test"
     test.mkdir(parents=True)
     shutil.copy("tests/fixtures/page/sample.xml", test / "sample.xml")
     Image.new("RGB", (1200, 800), "white").save(test / "page.jpg")
+    if local_artifact:
+        shutil.copy(artifact, root / artifact.name)
     if verified:
         digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
         marker = {
             "schema_version": "1.0",
             "source_id": "core-page",
+            "source_version": "1",
             "verification_status": "verified",
             "artifacts": [
                 {
@@ -110,14 +140,32 @@ def _source_tree(tmp_path: Path, artifact: Path, *, verified: bool = True) -> Pa
 
 
 def _build(
-    tmp_path: Path, *, verified: bool = True, research_nc: bool = False, profile: str = "open"
+    tmp_path: Path,
+    *,
+    verified: bool = True,
+    research_nc: bool = False,
+    external_review: bool = False,
+    profile: str = "open",
+    source_status: str = "core",
+    local_artifact: bool = False,
 ):
     artifact = tmp_path / "official.bin"
     artifact.write_bytes(b"official immutable corpus artifact")
     registry = load_registry(
-        _registry(tmp_path / "registry.yaml", artifact, research_nc=research_nc)
+        _registry(
+            tmp_path / "registry.yaml",
+            artifact,
+            research_nc=research_nc,
+            external_review=external_review,
+            source_status=source_status,
+        )
     )
-    source = _source_tree(tmp_path, artifact, verified=verified)
+    source = _source_tree(
+        tmp_path,
+        artifact,
+        verified=verified,
+        local_artifact=local_artifact,
+    )
     build = tmp_path / "build"
     build_corpus(
         registry,
@@ -159,12 +207,51 @@ def test_certification_rejects_unverified_core_source(tmp_path):
     assert not (build / "CERTIFIED.json").exists()
 
 
+def test_certification_rejects_unverified_supplementary_source(tmp_path):
+    build, registry = _build(tmp_path, verified=False, source_status="supplementary")
+
+    report = certify_release(build, registry, expected_version="1.0.0")
+
+    assert not report.is_certified
+    assert "source_unverified" in _codes(report)
+
+
+def test_exact_local_artifact_verifies_supplementary_source_without_marker(tmp_path):
+    build, registry = _build(
+        tmp_path,
+        verified=False,
+        local_artifact=True,
+        source_status="supplementary",
+    )
+
+    report = certify_release(build, registry, expected_version="1.0.0")
+
+    assert report.is_certified
+    source_report = json.loads(
+        (build / "source_reports/core-page.json").read_text(encoding="utf-8")
+    )
+    assert source_report["verification_method"] == "local_required_artifact_checksums"
+
+
 def test_certification_rejects_noncommercial_source_in_open_profile(tmp_path):
     build, registry = _build(tmp_path, research_nc=True, profile="open")
 
     report = certify_release(build, registry, expected_version="1.0.0")
 
     assert "profile_license_violation" in _codes(report)
+
+
+def test_external_review_conditional_source_is_certified_without_redistributing_bytes(tmp_path):
+    build, registry = _build(
+        tmp_path,
+        external_review=True,
+        profile="extension-handwriting",
+    )
+
+    report = certify_release(build, registry, expected_version="1.0.0")
+
+    assert report.is_certified
+    assert any(issue.code == "external_review_conditional_source" for issue in report.warnings)
 
 
 def test_certification_reruns_leakage_audit_and_detects_tampering(tmp_path):

@@ -153,23 +153,75 @@ def test_registry_rejects_unknown_source_selection(tmp_path):
         registry.select(source_ids={"missing"})
 
 
-def test_packaged_v1_registry_is_modern_only_and_remote_sources_are_revision_locked():
+def test_packaged_v1_registry_keeps_historical_pinkas_as_a_separate_locked_extension():
     registry = load_registry(Path("corpora/registry.yaml"))
 
     assert registry.registry_version == "1.0.0"
     assert set(registry.sources) == {
+        "biblical-niqqud-synthetic-diagnostic-v1",
+        "historical-hebrew-press-mixed-v1",
+        "historical-pinkas-handwriting-v1",
+        "modern-bidi-diagnostic-v1",
+        "modern-public-documents-v1",
+        "modern-print-lines-development-v1",
+        "modern-handwriting-lines-v1",
+        "rashi-print-synthetic-diagnostic-v1",
+    }
+    modern_source_ids = {
         "modern-bidi-diagnostic-v1",
         "modern-public-documents-v1",
         "modern-print-lines-development-v1",
         "modern-handwriting-lines-v1",
     }
-    for source in registry.sources.values():
+    modern_sources = {
+        source_id: source
+        for source_id, source in registry.sources.items()
+        if source_id in modern_source_ids
+    }
+    for source in modern_sources.values():
         assert source.metadata.get("era") == "modern"
         assert "yi" not in source.languages
+    pinkas = registry.sources["historical-pinkas-handwriting-v1"]
+    assert pinkas.metadata["era"] == "historical"
+    assert pinkas.metadata["benchmark_data_status"] == "real-public-fixed"
+    assert pinkas.metadata["coverage_scope"] == "narrow-single-collection"
+    assert pinkas.metadata["writer_disjoint"] is False
+    assert pinkas.converter == "pinkas-webdataset"
+    assert pinkas.artifacts[0].checksum is not None
+    assert (
+        pinkas.artifacts[0].checksum.value
+        == "d986a3527d1ddae19cf2f09f3ff5e84458eeb5e1f6f9cb4e2a48d895dfcd5eb6"
+    )
+    press = registry.sources["historical-hebrew-press-mixed-v1"]
+    assert press.converter == "historical-press-pagealto"
+    assert press.metadata["expected_pages"] == 34
+    assert press.metadata["expected_lines"] == 4016
+    assert press.metadata["pure_rashi_claim"] is False
+    assert press.artifacts[0].ignored_archive_members == ("/log.txt",)
+    assert press.artifacts[0].checksum is not None
+    assert press.artifacts[0].checksum.value == (
+        "775e77227cbd46099487d3294d8cfd449ced7c8b6eeb7865ba41f053fe1b0ea8"
+    )
     for source_id in (
+        "historical-hebrew-press-mixed-v1",
+        "historical-pinkas-handwriting-v1",
         "modern-public-documents-v1",
         "modern-print-lines-development-v1",
         "modern-handwriting-lines-v1",
     ):
         artifact = registry.sources[source_id].artifacts[0]
         assert artifact.revision
+
+    niqqud = registry.sources["biblical-niqqud-synthetic-diagnostic-v1"]
+    rashi = registry.sources["rashi-print-synthetic-diagnostic-v1"]
+    assert niqqud.status == rashi.status == "diagnostic"
+    assert niqqud.converter == rashi.converter == "foundation-webdataset"
+    assert niqqud.metadata["benchmark_data_status"] == "synthetic-public-fixed"
+    assert niqqud.metadata["expected_cantillation_marks"] == 0
+    assert niqqud.metadata["headline_eligible"] is False
+    assert rashi.metadata["headline_eligible"] is False
+    assert (
+        niqqud.artifacts[0].checksum.value
+        == rashi.artifacts[0].checksum.value
+        == ("12886b77eefb54f73ed2ea9ba9ddf4766de60ed2635126248344739626608927")
+    )

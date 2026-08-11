@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hebocrbench.org/schema/full-suite-lock-1.0.json",
+  "title": "HebOCRBench Multi-Profile Suite Lock",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "suite_version",
+    "benchmark",
+    "benchmark_version",
+    "manifest_type",
+    "registry_fingerprint",
+    "profiles_fingerprint",
+    "reporting_policy",
+    "families",
+    "components",
+    "coverage",
+    "suite_fingerprint"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "suite_version": {"type": "string", "minLength": 1},
+    "benchmark": {"const": "HebOCRBench"},
+    "benchmark_version": {"type": "string", "minLength": 1},
+    "manifest_type": {"const": "multi-profile-suite-lock"},
+    "registry_fingerprint": {"$ref": "#/$defs/digest"},
+    "profiles_fingerprint": {"$ref": "#/$defs/digest"},
+    "reporting_policy": {
+      "type": "object",
+      "required": [
+        "cross_family_score",
+        "modern_print_score",
+        "extensions",
+        "synthetic_diagnostics",
+        "missing_coverage"
+      ],
+      "properties": {
+        "cross_family_score": {"const": "forbidden"},
+        "modern_print_score": {"const": "guarded-five-track-within-family-only"},
+        "extensions": {"const": "report-each-extension-separately"},
+        "synthetic_diagnostics": {"const": "separate-non-rankable"},
+        "missing_coverage": {"const": "must-remain-explicit-and-unscored"}
+      },
+      "additionalProperties": false
+    },
+    "families": {
+      "type": "object",
+      "minProperties": 9,
+      "maxProperties": 9,
+      "additionalProperties": {"$ref": "#/$defs/family"}
+    },
+    "components": {
+      "type": "object",
+      "required": [
+        "modern-bidi-v1",
+        "modern-line-recognition-v1",
+        "modern-page-ocr-v1",
+        "modern-tables-v1",
+        "modern-robustness-v1",
+        "modern-handwriting-v1",
+        "modern-forms-v1",
+        "historical-hebrew-press-mixed-v1",
+        "historical-pinkas-handwriting-v1",
+        "biblical-niqqud-synthetic-diagnostic-v1",
+        "rashi-print-synthetic-diagnostic-v1",
+        "biblical-cantillation-real-v1",
+        "rashi-pure-print-real-v1"
+      ],
+      "properties": {
+        "modern-bidi-v1": {"$ref": "#/$defs/component"},
+        "modern-line-recognition-v1": {"$ref": "#/$defs/component"},
+        "modern-page-ocr-v1": {"$ref": "#/$defs/component"},
+        "modern-tables-v1": {"$ref": "#/$defs/component"},
+        "modern-robustness-v1": {"$ref": "#/$defs/component"},
+        "modern-handwriting-v1": {"$ref": "#/$defs/component"},
+        "modern-forms-v1": {"$ref": "#/$defs/component"},
+        "historical-hebrew-press-mixed-v1": {"$ref": "#/$defs/component"},
+        "historical-pinkas-handwriting-v1": {"$ref": "#/$defs/component"},
+        "biblical-niqqud-synthetic-diagnostic-v1": {"$ref": "#/$defs/component"},
+        "rashi-print-synthetic-diagnostic-v1": {"$ref": "#/$defs/component"},
+        "biblical-cantillation-real-v1": {"$ref": "#/$defs/component"},
+        "rashi-pure-print-real-v1": {"$ref": "#/$defs/component"}
+      },
+      "additionalProperties": false
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "modern_headline_status",
+        "modern_headline_missing_components",
+        "real_public_fixed_extensions_available",
+        "real_public_fixed_extensions_missing",
+        "synthetic_diagnostics_available",
+        "synthetic_diagnostics_missing",
+        "modern_forms_status",
+        "experimental_components",
+        "declared_real_target_coverage",
+        "unresolved_real_coverage_gaps"
+      ],
+      "properties": {
+        "modern_headline_status": {"enum": ["complete", "incomplete"]},
+        "modern_headline_missing_components": {"$ref": "#/$defs/idList"},
+        "real_public_fixed_extensions_available": {"$ref": "#/$defs/idList"},
+        "real_public_fixed_extensions_missing": {"$ref": "#/$defs/idList"},
+        "synthetic_diagnostics_available": {"$ref": "#/$defs/idList"},
+        "synthetic_diagnostics_missing": {"$ref": "#/$defs/idList"},
+        "modern_forms_status": {"const": "missing-real-gold"},
+        "experimental_components": {"$ref": "#/$defs/idList"},
+        "declared_real_target_coverage": {"enum": ["complete", "incomplete"]},
+        "unresolved_real_coverage_gaps": {"$ref": "#/$defs/idList"}
+      },
+      "additionalProperties": false
+    },
+    "suite_fingerprint": {"$ref": "#/$defs/digest"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "idList": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "family": {
+      "type": "object",
+      "required": ["title", "profile_id", "component_ids", "score_policy"],
+      "properties": {
+        "title": {"type": "string", "minLength": 1},
+        "profile_id": {"type": ["string", "null"]},
+        "component_ids": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "score_policy": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "root_format",
+        "track_id",
+        "profile_id",
+        "profile_scope",
+        "registry_fingerprint",
+        "dataset_fingerprint",
+        "page_count",
+        "source_ids",
+        "manifest_sha256",
+        "dataset_lock_sha256",
+        "frozen_sha256",
+        "gold_sha256",
+        "stats_sha256",
+        "certification_sha256",
+        "certified_sha256"
+      ],
+      "properties": {
+        "root_format": {"const": "frozen-certified-corpus-v1"},
+        "track_id": {"type": "string", "minLength": 1},
+        "profile_id": {"type": "string", "minLength": 1},
+        "profile_scope": {"enum": ["full", "track-component"]},
+        "registry_fingerprint": {"$ref": "#/$defs/digest"},
+        "dataset_fingerprint": {"$ref": "#/$defs/digest"},
+        "page_count": {"type": "integer", "minimum": 1},
+        "source_ids": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "manifest_sha256": {"$ref": "#/$defs/digest"},
+        "dataset_lock_sha256": {"$ref": "#/$defs/digest"},
+        "frozen_sha256": {"$ref": "#/$defs/digest"},
+        "gold_sha256": {"$ref": "#/$defs/digest"},
+        "stats_sha256": {"$ref": "#/$defs/digest"},
+        "certification_sha256": {"$ref": "#/$defs/digest"},
+        "certified_sha256": {"$ref": "#/$defs/digest"}
+      },
+      "additionalProperties": false
+    },
+    "component": {
+      "type": "object",
+      "required": [
+        "family_id",
+        "profile_id",
+        "evidence_class",
+        "reporting_role",
+        "status"
+      ],
+      "properties": {
+        "family_id": {"type": "string", "minLength": 1},
+        "profile_id": {"type": ["string", "null"]},
+        "evidence_class": {"type": "string", "minLength": 1},
+        "reporting_role": {"type": "string", "minLength": 1},
+        "status": {"enum": ["certified", "missing"]},
+        "missing_reason": {"type": "string", "minLength": 1},
+        "evidence": {"$ref": "#/$defs/evidence"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "certified"}}},
+          "then": {
+            "required": ["evidence"],
+            "properties": {"missing_reason": false}
+          },
+          "else": {
+            "required": ["missing_reason"],
+            "properties": {"evidence": false}
+          }
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -26,11 +26,16 @@ from .corpus_stats import compute_corpus_stats
 from .dataset_audit import audit_dataset
 from .config import load_benchmark_config
 from .evaluator import evaluate_dataset
+from .full_suite import (
+    FullSuiteError,
+    build_full_suite_lock,
+    load_full_suite_lock,
+    validate_full_suite_contract,
+    verify_full_suite_roots,
+)
 from .io import load_jsonl, write_json, write_jsonl
 from .modern_score import (
     ModernScoreError,
-    combine_modern_track_reports,
-    load_modern_report_root,
 )
 from .modern_suite import (
     ModernSuiteError,
@@ -39,6 +44,7 @@ from .modern_suite import (
     suite_evidence_for_track,
     validate_modern_suite_contract,
 )
+from .official_score import OfficialScoreError, verify_and_combine_modern_reports
 from .report import write_evaluation_artifacts
 from .sanity import run_sanity_matrix
 from .stress import DEFAULT_VARIANTS, SUPPORTED_VARIANTS, generate_stress_suite
@@ -86,6 +92,21 @@ def _source_root_values(values: Sequence[str]) -> dict[str, Path]:
         if source_id in roots:
             raise ValueError(f"Duplicate source root mapping: {source_id}")
         roots[source_id] = Path(raw_path).expanduser()
+    return roots
+
+
+def _component_root_values(values: Sequence[str]) -> dict[str, Path]:
+    roots: dict[str, Path] = {}
+    for value in values:
+        if "=" not in value:
+            raise ValueError(f"Component root must use COMPONENT_ID=PATH syntax: {value!r}")
+        component_id, raw_path = value.split("=", 1)
+        component_id = component_id.strip()
+        if not component_id or not raw_path.strip():
+            raise ValueError(f"Invalid component root mapping: {value!r}")
+        if component_id in roots:
+            raise ValueError(f"Duplicate component root mapping: {component_id}")
+        roots[component_id] = Path(raw_path).expanduser()
     return roots
 
 
@@ -234,6 +255,7 @@ def _run_data_command(args: argparse.Namespace) -> int:
                     selected_source_ids=selected,
                     registry=registry,
                     accepted_source_ids=args.accept or [],
+                    allow_subset=args.profile_scope == "track-component",
                 )
                 if not selection.is_valid:
                     details = "; ".join(
@@ -250,6 +272,8 @@ def _run_data_command(args: argparse.Namespace) -> int:
             benchmark_version=args.benchmark_version,
             profile=args.profile,
             overwrite=args.overwrite,
+            track_id=args.track_id,
+            profile_scope=args.profile_scope,
         )
         _json_print(
             {
@@ -295,6 +319,38 @@ def build_parser() -> argparse.ArgumentParser:
     tracks_show.add_argument("track_id")
     tracks_verify = tracks_sub.add_parser("verify", help="Verify official track lock")
     tracks_verify.add_argument("--directory", type=Path)
+
+    full_suite = sub.add_parser(
+        "full-suite",
+        help="Build or verify the non-blended HebOCRBench multi-profile suite lock",
+    )
+    full_suite_sub = full_suite.add_subparsers(dest="full_suite_command", required=True)
+    full_suite_build = full_suite_sub.add_parser(
+        "build",
+        help="Build one manifest from supplied certified roots and explicit missing components",
+    )
+    full_suite_build.add_argument("--registry", type=Path)
+    full_suite_build.add_argument("--profiles", type=Path)
+    full_suite_build.add_argument(
+        "--component-root",
+        action="append",
+        default=[],
+        metavar="COMPONENT_ID=PATH",
+    )
+    full_suite_build.add_argument("--output", required=True, type=Path)
+    full_suite_verify = full_suite_sub.add_parser(
+        "verify",
+        help="Verify lock semantics and optionally re-hash all certified component roots",
+    )
+    full_suite_verify.add_argument("--registry", type=Path)
+    full_suite_verify.add_argument("--profiles", type=Path)
+    full_suite_verify.add_argument("--lock", required=True, type=Path)
+    full_suite_verify.add_argument(
+        "--component-root",
+        action="append",
+        default=[],
+        metavar="COMPONENT_ID=PATH",
+    )
 
     modern_suite = sub.add_parser(
         "modern-suite", help="Build or verify a certified Modern Hebrew suite lock"
@@ -374,7 +430,7 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--skip-validation", action="store_true")
 
     compare = sub.add_parser(
-        "compare", help="Build a certified comparison table from report bundles"
+        "compare", help="Build a non-certified diagnostic comparison from report bundles"
     )
     compare.add_argument(
         "--reports", required=True, type=Path, help="Directory containing report subdirectories"
@@ -397,6 +453,13 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         type=Path,
         help="Certified Modern Hebrew suite lock used by every report bundle",
+    )
+    modern_score.add_argument(
+        "--track-root",
+        required=True,
+        action="append",
+        metavar="TRACK_ID=PATH",
+        help="Certified component root; repeat for each of the five headline tracks",
     )
 
     inspect = sub.add_parser("inspect", help="Print one gold page in logical order")
@@ -452,6 +515,11 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--output", required=True, type=Path)
         command.add_argument("--profile", default="custom")
         command.add_argument("--benchmark-version", default=__version__)
+        command.add_argument("--track-id")
+        command.add_argument(
+            "--profile-scope",
+            choices=("full", "track-component"),
+        )
         command.add_argument("--overwrite", action="store_true")
 
     data_stats = data_sub.add_parser("stats", help="Compute corpus coverage statistics")
@@ -481,6 +549,54 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "full-suite":
+        try:
+            registry = load_registry(args.registry)
+            profiles = load_profiles(args.profiles, registry=registry)
+            roots = _component_root_values(args.component_root)
+            if args.full_suite_command == "build":
+                payload = build_full_suite_lock(
+                    roots,
+                    registry_fingerprint=registry.fingerprint,
+                    profiles_fingerprint=profiles.fingerprint,
+                    benchmark_version=__version__,
+                    suite_version=__version__,
+                )
+                write_json(args.output, payload)
+                suite = load_full_suite_lock(args.output)
+            else:
+                suite = load_full_suite_lock(args.lock)
+            validate_full_suite_contract(
+                suite,
+                expected_benchmark_version=__version__,
+                expected_registry_fingerprint=registry.fingerprint,
+                expected_profiles_fingerprint=profiles.fingerprint,
+            )
+            root_report = None
+            if roots:
+                root_report = verify_full_suite_roots(suite, roots)
+            missing = sorted(
+                component_id
+                for component_id, component in suite.components.items()
+                if component.status == "missing"
+            )
+            _json_print(
+                {
+                    "valid": True,
+                    "suite_fingerprint": suite.suite_fingerprint,
+                    "cross_family_score": suite.reporting_policy["cross_family_score"],
+                    "coverage": dict(suite.coverage),
+                    "certified_components": sorted(set(suite.components) - set(missing)),
+                    "missing_components": missing,
+                    "root_evidence_verified": root_report is not None,
+                    "output": str(args.output) if args.full_suite_command == "build" else None,
+                }
+            )
+            return 0
+        except (FullSuiteError, ProfileError, RegistryError, OSError, ValueError) as exc:
+            _json_print({"error": str(exc), "error_type": type(exc).__name__})
+            return 2
+
     if args.command == "modern-suite":
         try:
             registry = load_registry(args.registry)
@@ -722,6 +838,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "certified_runs": sum(
                     row.get("certified_rank") is not None for row in payload["runs"]
                 ),
+                "diagnostically_ranked_runs": sum(
+                    row.get("diagnostic_rank") is not None for row in payload["runs"]
+                ),
                 "artifacts": {key: str(path) for key, path in paths.items()},
             }
         )
@@ -730,11 +849,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "modern-score":
         try:
             suite = load_modern_suite_lock(args.suite_lock)
-            result = combine_modern_track_reports(
-                load_modern_report_root(args.reports),
-                suite_lock=suite,
+            result = verify_and_combine_modern_reports(
+                args.reports,
+                _component_root_values(args.track_root),
+                suite,
             )
-        except (ModernScoreError, ModernSuiteError) as exc:
+        except (ModernScoreError, ModernSuiteError, OfficialScoreError, ValueError) as exc:
             _json_print({"error": str(exc)})
             return 2
         write_json(args.output, result)

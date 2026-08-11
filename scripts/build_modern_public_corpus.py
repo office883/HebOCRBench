@@ -72,9 +72,7 @@ def _candidate(
     minimum_knesset_number: int,
 ) -> dict[str, object] | None:
     url = _normalize_public_url(row.get("FilePath"))
-    if str(row.get("ApplicationDesc") or "").upper() != "PDF" or not url.lower().endswith(
-        ".pdf"
-    ):
+    if str(row.get("ApplicationDesc") or "").upper() != "PDF" or not url.lower().endswith(".pdf"):
         return None
     knesset_number = _ENGINE._knesset_number_from_url(url)
     if knesset_number is None or knesset_number < minimum_knesset_number:
@@ -106,9 +104,7 @@ def _basic_page_evidence(page) -> dict[str, object]:
     text = _ENGINE.normalize_strict(page.get_text("text", sort=False).replace("\r", "\n"))
     alphabetic = sum(char.isalpha() for char in text)
     hebrew_letters = len(_ENGINE.HEBREW_RE.findall(text))
-    arabic_letters = sum(
-        char.isalpha() and "ARABIC" in unicodedata.name(char, "") for char in text
-    )
+    arabic_letters = sum(char.isalpha() and "ARABIC" in unicodedata.name(char, "") for char in text)
     form_signal = sum(1 for pattern in _ENGINE.FORM_PATTERNS if pattern.search(text))
     mixed_bidi = bool(_ENGINE.HEBREW_RE.search(text)) and bool(
         _ENGINE.LATIN_RE.search(text) or _ENGINE.NUMBER_RE.search(text)

@@ -34,6 +34,24 @@
       "type": "string",
       "minLength": 1
     },
+    "profile_scope": {
+      "enum": [
+        "full",
+        "track-component"
+      ]
+    },
+    "track_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parent_dataset_fingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "derivation": {
+      "type": "object",
+      "additionalProperties": true
+    },
     "dataset_fingerprint": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"

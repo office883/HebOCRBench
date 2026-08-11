@@ -1,12 +1,48 @@
 {
   "profiles": {
+    "biblical-niqqud-synthetic-diagnostic-v1": {
+      "allowed_license_tiers": [
+        "external-review"
+      ],
+      "certification_class": "diagnostic-synthetic-niqqud-public-fixed-heldout",
+      "description": "Held-out synthetic vocalized-line diagnostic with zero cantillation; it does not satisfy the real Biblical/cantillation coverage target.",
+      "score_policy": "separate-diagnostic-no-headline-no-biblical-claim",
+      "source_ids": [
+        "biblical-niqqud-synthetic-diagnostic-v1"
+      ],
+      "title": "HebOCRBench 1.0 Synthetic Niqqud Diagnostic"
+    },
+    "historical-hebrew-press-mixed-v1": {
+      "allowed_license_tiers": [
+        "external-review"
+      ],
+      "certification_class": "extension-historical-hebrew-press-mixed-public-fixed",
+      "description": "Real public-fixed 34-page HaZefira historical newspaper extension with paired PAGE/ALTO gold and no region- or line-level pure-Rashi labels.",
+      "score_policy": "separate-extension-no-blending-no-pure-rashi-claim",
+      "source_ids": [
+        "historical-hebrew-press-mixed-v1"
+      ],
+      "title": "HebOCRBench 1.0 Historical Hebrew Press Mixed Square/Rashi Extension"
+    },
+    "historical-pinkas-handwriting-v1": {
+      "allowed_license_tiers": [
+        "open"
+      ],
+      "certification_class": "extension-historical-pinkas-handwriting-public-fixed",
+      "description": "Narrow real public-fixed six-page Pinkas line-recognition extension; page-disjoint from cached training pages, single-collection, and not writer-disjoint.",
+      "score_policy": "separate-extension-no-blending-narrow-single-collection",
+      "source_ids": [
+        "historical-pinkas-handwriting-v1"
+      ],
+      "title": "HebOCRBench 1.0 Pinkas Historical Handwriting Extension"
+    },
     "modern-hebrew-development-v1": {
       "allowed_license_tiers": [
         "bundled",
         "external-review"
       ],
       "certification_class": "development-modern-hebrew-print",
-      "description": "Adds the modern print-line development source without changing the official hidden-test claim.",
+      "description": "Adds the modern print-line development source for non-ranked development; it does not create a hidden or unseen test claim.",
       "score_policy": "per-source-no-official-rank",
       "source_ids": [
         "modern-bidi-diagnostic-v1",
@@ -40,10 +76,22 @@
         "modern-public-documents-v1"
       ],
       "title": "HebOCRBench 1.0 Modern Hebrew Print Profile"
+    },
+    "rashi-print-synthetic-diagnostic-v1": {
+      "allowed_license_tiers": [
+        "external-review"
+      ],
+      "certification_class": "diagnostic-synthetic-rashi-public-fixed-heldout",
+      "description": "Held-out single-family synthetic Noto Rashi Hebrew line diagnostic; it is not real historical-print evidence.",
+      "score_policy": "separate-diagnostic-no-headline-no-historical-claim",
+      "source_ids": [
+        "rashi-print-synthetic-diagnostic-v1"
+      ],
+      "title": "HebOCRBench 1.0 Synthetic Rashi Typeface Diagnostic"
     }
   },
-  "profiles_fingerprint": "4d84268734a17a60717f86fa4eb44ac703dc301dbdaca99b19efbe0cb7b27777",
+  "profiles_fingerprint": "a84ada5741ec4d314075775493bc5d57cc5ec271d3d9d495b199a4b9498da173",
   "profiles_version": "1.0.0",
-  "registry_fingerprint": "2958ab9868ce10754ff3ad4144b5abf95b4c32d4c35daf993057f73cf8fe730f",
+  "registry_fingerprint": "8c0cc599208d4ca1a4ef3d3ead0a57325c4eaad5f27b346714ab9b8045291bfa",
   "schema_version": "1.0"
 }

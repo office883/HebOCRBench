@@ -15,6 +15,7 @@ from hebocrbench.acquisition import (
     fetch_source,
     safe_extract,
     verify_artifact,
+    verify_source_cache,
 )
 from hebocrbench.corpus_registry import (
     ArtifactChecksum,
@@ -89,6 +90,46 @@ def test_fetch_source_downloads_atomically_verifies_and_reuses_cache(tmp_path):
     assert second.artifacts[0].sha256 == hashlib.sha256(b"real corpus bytes").hexdigest()
 
 
+def test_fetch_source_supports_locked_nested_artifact_filename(tmp_path):
+    upstream = tmp_path / "upstream.parquet"
+    upstream.write_bytes(b"locked parquet bytes")
+    artifact = replace(
+        _artifact_for(upstream),
+        filename="stage3_human_finetune/test-00000.parquet",
+    )
+    source = _source(artifact)
+    cache = tmp_path / "cache"
+
+    fetched = fetch_source(source, cache, accepted_source_ids=set())
+    verified = verify_source_cache(source, cache)
+
+    expected = cache / "fixture-source/stage3_human_finetune/test-00000.parquet"
+    assert fetched.artifacts[0].path == expected
+    assert verified.artifacts[0].path == expected
+    assert expected.read_bytes() == b"locked parquet bytes"
+
+
+def test_fetch_source_rejects_cache_filename_traversal_and_symlink_escape(tmp_path):
+    upstream = tmp_path / "upstream.bin"
+    upstream.write_bytes(b"must stay confined")
+    cache = tmp_path / "cache"
+
+    traversal = replace(_artifact_for(upstream), filename="../escape.bin")
+    with pytest.raises(AcquisitionError, match="unsafe cache filename"):
+        fetch_source(_source(traversal), cache, accepted_source_ids=set())
+    assert not (cache / "escape.bin").exists()
+
+    source_root = cache / "fixture-source"
+    outside = tmp_path / "outside"
+    source_root.mkdir(parents=True, exist_ok=True)
+    outside.mkdir()
+    (source_root / "nested").symlink_to(outside, target_is_directory=True)
+    symlink_escape = replace(_artifact_for(upstream), filename="nested/escape.bin")
+    with pytest.raises(AcquisitionError, match="escapes its source root"):
+        fetch_source(_source(symlink_escape), cache, accepted_source_ids=set())
+    assert not (outside / "escape.bin").exists()
+
+
 def test_fetch_source_requires_explicit_acceptance_for_nc_source(tmp_path):
     upstream = tmp_path / "data.bin"
     upstream.write_bytes(b"licensed")
@@ -129,6 +170,39 @@ def test_safe_extract_zip_rejects_path_traversal(tmp_path):
     with pytest.raises(AcquisitionError, match="unsafe path"):
         safe_extract(archive, tmp_path / "out", archive_type="zip")
     assert not (tmp_path / "escape.txt").exists()
+
+
+def test_safe_extract_zip_allows_exact_locked_ignored_member(tmp_path):
+    archive = tmp_path / "upstream.zip"
+    with zipfile.ZipFile(archive, "w") as handle:
+        handle.writestr("/log.txt", "irrelevant upstream log")
+        handle.writestr("dataset/page.xml", "<PcGts/>")
+
+    extracted = safe_extract(
+        archive,
+        tmp_path / "out",
+        archive_type="zip",
+        ignored_members={"/log.txt"},
+    )
+
+    assert [path.relative_to(tmp_path / "out").as_posix() for path in extracted] == [
+        "dataset/page.xml"
+    ]
+    assert not (tmp_path / "log.txt").exists()
+
+
+def test_safe_extract_requires_every_locked_ignored_member(tmp_path):
+    archive = tmp_path / "upstream.zip"
+    with zipfile.ZipFile(archive, "w") as handle:
+        handle.writestr("dataset/page.xml", "<PcGts/>")
+
+    with pytest.raises(AcquisitionError, match="ignored ZIP members were not present"):
+        safe_extract(
+            archive,
+            tmp_path / "out",
+            archive_type="zip",
+            ignored_members={"/log.txt"},
+        )
 
 
 def test_safe_extract_tar_rejects_symlinks(tmp_path):
@@ -220,3 +294,29 @@ def test_fetch_source_writes_reproducible_verification_manifest(tmp_path):
     assert (
         payload["artifacts"][0]["actual_sha256"] == hashlib.sha256(b"verified source").hexdigest()
     )
+
+
+def test_fetch_and_verify_skip_optional_artifacts(tmp_path):
+    required_payload = tmp_path / "required.bin"
+    optional_payload = tmp_path / "optional.bin"
+    required_payload.write_bytes(b"release evidence")
+    optional_payload.write_bytes(b"large optional mirror")
+    required_artifact = _artifact_for(required_payload)
+    optional_artifact = replace(
+        _artifact_for(optional_payload),
+        artifact_id="optional-mirror",
+        required=False,
+    )
+    source = replace(_source(required_artifact), artifacts=(required_artifact, optional_artifact))
+    cache = tmp_path / "cache"
+
+    fetched = fetch_source(source, cache, accepted_source_ids=set())
+    verified = verify_source_cache(source, cache)
+
+    assert [artifact.artifact_id for artifact in fetched.artifacts] == ["archive"]
+    assert [artifact.artifact_id for artifact in verified.artifacts] == ["archive"]
+    assert not (cache / "fixture-source" / optional_payload.name).exists()
+    marker = __import__("json").loads(
+        (cache / "fixture-source" / ".hebocrbench-source.json").read_text(encoding="utf-8")
+    )
+    assert [artifact["artifact_id"] for artifact in marker["artifacts"]] == ["archive"]

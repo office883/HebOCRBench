@@ -189,9 +189,13 @@ def test_data_profiles_lists_official_machine_readable_profiles(capsys):
 
     assert payload["profiles_version"] == "1.0.0"
     assert [item["profile_id"] for item in payload["profiles"]] == [
+        "biblical-niqqud-synthetic-diagnostic-v1",
+        "historical-hebrew-press-mixed-v1",
+        "historical-pinkas-handwriting-v1",
         "modern-hebrew-development-v1",
         "modern-hebrew-handwriting-v1",
         "modern-hebrew-print-v1",
+        "rashi-print-synthetic-diagnostic-v1",
     ]
     assert {item["profile_id"]: item["source_ids"] for item in payload["profiles"]}[
         "modern-hebrew-print-v1"

@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "selection_id": "modern-public-selection-v1",
+  "encoding": "gzip+base64-parts",
+  "part_stem": "modern-public-selection-v1.json.gz.b64",
+  "part_count": 4,
+  "encoded_length": 19268,
+  "decoded_json_sha256": "4c0ebc58784d565f225b8a412ffa93146df4c417de479464f1d9f283ecf7af52",
+  "upstream_selector_sha256": "2e9eb9036e83d4d96d3f8d38afbb3ea8c88c6676b458a210b17f149953373044",
+  "coverage": {
+    "documents": 146,
+    "pages": 700,
+    "template_families": 142,
+    "table_pages": 61,
+    "form_pages": 52,
+    "mixed_bidi_pages": 694
+  },
+  "quality_contract": {
+    "minimum_anchor_content": 0.98,
+    "minimum_local_order": 0.83,
+    "minimum_critical_ltr_content": 1.0,
+    "minimum_punctuation_content": 0.94,
+    "render_dpi": 200
+  },
+  "selection_policy": "deterministic scarcity-aware set cover over the verified 2026-07-30 Knesset selector snapshot",
+  "official_scope": "contemporary Modern Hebrew only"
+}

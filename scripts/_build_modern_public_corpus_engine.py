@@ -31,7 +31,9 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-import fitz  # noqa: E402
+import pymupdf as fitz  # noqa: E402
+
+getattr(fitz, "no_recommend_layout", lambda: None)()
 
 from hebocrbench.bidi_metrics import first_strong_direction  # noqa: E402
 from hebocrbench.converters import ConversionContext  # noqa: E402

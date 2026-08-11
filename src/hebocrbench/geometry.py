@@ -94,10 +94,32 @@ def polygon_iou(
 ) -> float:
     gold = _polygon(gold_polygon)
     pred = _polygon(prediction_polygon)
+    return _polygon_iou_objects(gold, pred)
+
+
+def _polygon_iou_objects(gold: Polygon, pred: Polygon) -> float:
+    """Compute IoU for already-normalized shapes without rebuilding them."""
+
     if gold.is_empty or pred.is_empty:
         return 0.0
-    union = gold.union(pred).area
-    return 0.0 if union <= 0 else float(gold.intersection(pred).area / union)
+    gold_min_x, gold_min_y, gold_max_x, gold_max_y = gold.bounds
+    pred_min_x, pred_min_y, pred_max_x, pred_max_y = pred.bounds
+    if (
+        gold_max_x <= pred_min_x
+        or pred_max_x <= gold_min_x
+        or gold_max_y <= pred_min_y
+        or pred_max_y <= gold_min_y
+    ):
+        return 0.0
+    try:
+        intersection = gold.intersection(pred).area
+    except GEOSException:
+        return 0.0
+    if intersection <= 0:
+        return 0.0
+    # Inclusion/exclusion avoids a second expensive GEOS overlay operation.
+    union = gold.area + pred.area - intersection
+    return 0.0 if union <= 0 else float(intersection / union)
 
 
 def polygon_bounds(points: Sequence[Sequence[float]]) -> tuple[float, float, float, float]:
@@ -124,13 +146,21 @@ def match_geometries(
             unmatched_prediction_indices=list(range(pred_count)),
         )
 
+    # Normalize each polygon once.  The prior pairwise implementation rebuilt,
+    # validated and repaired both shapes for every matrix cell, which made the
+    # 4,900-page robustness track needlessly slow and memory hungry.
+    gold_polygons = [
+        _polygon(item.get(polygon_key, []))  # type: ignore[arg-type]
+        for item in gold_items
+    ]
+    prediction_polygons = [
+        _polygon(item.get(polygon_key, []))  # type: ignore[arg-type]
+        for item in prediction_items
+    ]
     matrix = np.zeros((gold_count, pred_count), dtype=float)
-    for gi, gold in enumerate(gold_items):
-        for pi, pred in enumerate(prediction_items):
-            matrix[gi, pi] = polygon_iou(
-                gold.get(polygon_key, []),  # type: ignore[arg-type]
-                pred.get(polygon_key, []),  # type: ignore[arg-type]
-            )
+    for gi, gold in enumerate(gold_polygons):
+        for pi, pred in enumerate(prediction_polygons):
+            matrix[gi, pi] = _polygon_iou_objects(gold, pred)
 
     row_indices, col_indices = linear_sum_assignment(-matrix)
     matches: list[GeometryMatch] = []

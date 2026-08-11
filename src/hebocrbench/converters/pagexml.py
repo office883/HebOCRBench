@@ -86,6 +86,8 @@ def convert_pagexml_file(
     annotation_path: str | Path,
     image_root: str | Path,
     context: ConversionContext,
+    *,
+    dimension_tolerance: int = 0,
 ) -> dict[str, object]:
     annotation = Path(annotation_path)
     root = ET.parse(annotation).getroot()
@@ -102,6 +104,7 @@ def convert_pagexml_file(
         relative_name=Path(image_name).as_posix(),
         declared_width=int(page.get("imageWidth", "0")),
         declared_height=int(page.get("imageHeight", "0")),
+        dimension_tolerance=dimension_tolerance,
     )
     page_language = normalize_language(page.get("primaryLanguage"), "he")
     page_direction = normalize_direction(page.get("readingDirection"), page_language)

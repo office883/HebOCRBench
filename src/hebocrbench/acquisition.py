@@ -63,6 +63,30 @@ class FetchResult:
         return sum(artifact.from_cache for artifact in self.artifacts)
 
 
+def _artifact_cache_target(root: Path, artifact: CorpusArtifact) -> Path:
+    filename = artifact.filename
+    relative = PurePosixPath(filename)
+    if (
+        not filename
+        or "\\" in filename
+        or relative.is_absolute()
+        or relative == PurePosixPath(".")
+        or ".." in relative.parts
+    ):
+        raise AcquisitionError(
+            f"Artifact {artifact.artifact_id} has an unsafe cache filename: {filename!r}"
+        )
+    target = root.joinpath(*relative.parts)
+    resolved_root = root.resolve()
+    try:
+        target.resolve(strict=False).relative_to(resolved_root)
+    except ValueError as exc:
+        raise AcquisitionError(
+            f"Artifact {artifact.artifact_id} cache filename escapes its source root"
+        ) from exc
+    return target
+
+
 def _hash_file(path: Path, algorithm: str) -> str:
     try:
         digest = hashlib.new(algorithm)
@@ -128,8 +152,14 @@ def safe_extract(
     archive_type: str | None = None,
     max_members: int = 100_000,
     max_uncompressed_bytes: int = 20 * 1024 * 1024 * 1024,
+    ignored_members: set[str] | frozenset[str] | None = None,
 ) -> tuple[Path, ...]:
-    """Extract ZIP/TAR without traversal, links, devices, or unbounded expansion."""
+    """Extract ZIP/TAR without traversal, links, devices, or unbounded expansion.
+
+    ``ignored_members`` is an exact, registry-controlled exception list for
+    upstream archives containing irrelevant unsafe names. Ignored members are
+    never written, still count toward archive bounds, and must all be present.
+    """
 
     archive = Path(archive_path)
     output = Path(destination)
@@ -149,18 +179,26 @@ def safe_extract(
     output.mkdir(parents=True, exist_ok=True)
     extracted: list[Path] = []
     total = 0
+    ignored = set(ignored_members or ())
 
     if kind == "zip":
         with zipfile.ZipFile(archive) as handle:
             members = handle.infolist()
             if len(members) > max_members:
                 raise AcquisitionError(f"Archive has too many members: {len(members)}")
+            missing_ignored = sorted(ignored - {info.filename for info in members})
+            if missing_ignored:
+                raise AcquisitionError(
+                    "Configured ignored ZIP members were not present: " + ", ".join(missing_ignored)
+                )
             for info in members:
                 if _zip_member_is_link(info):
                     raise AcquisitionError(f"Archive link is not allowed: {info.filename}")
                 total += info.file_size
                 if total > max_uncompressed_bytes:
                     raise AcquisitionError("Archive exceeds maximum uncompressed size")
+                if info.filename in ignored:
+                    continue
                 target = _safe_member_path(info.filename, output)
                 if info.is_dir():
                     target.mkdir(parents=True, exist_ok=True)
@@ -177,6 +215,11 @@ def safe_extract(
             members = handle.getmembers()
             if len(members) > max_members:
                 raise AcquisitionError(f"Archive has too many members: {len(members)}")
+            missing_ignored = sorted(ignored - {member.name for member in members})
+            if missing_ignored:
+                raise AcquisitionError(
+                    "Configured ignored TAR members were not present: " + ", ".join(missing_ignored)
+                )
             for member in members:
                 if member.issym() or member.islnk():
                     raise AcquisitionError(f"Archive link is not allowed: {member.name}")
@@ -185,6 +228,8 @@ def safe_extract(
                 total += max(member.size, 0)
                 if total > max_uncompressed_bytes:
                     raise AcquisitionError("Archive exceeds maximum uncompressed size")
+                if member.name in ignored:
+                    continue
                 target = _safe_member_path(member.name, output)
                 if member.isdir():
                     target.mkdir(parents=True, exist_ok=True)
@@ -381,7 +426,10 @@ def fetch_source(
     root.mkdir(parents=True, exist_ok=True)
     results: list[ArtifactFetchResult] = []
     for artifact in source.artifacts:
-        target = root / artifact.filename
+        if not artifact.required:
+            continue
+        target = _artifact_cache_target(root, artifact)
+        target.parent.mkdir(parents=True, exist_ok=True)
         if artifact.url.startswith("git+"):
             verified, from_cache = _fetch_git_artifact(artifact, target)
             results.append(
@@ -410,7 +458,12 @@ def fetch_source(
                 extracted_to = None
                 if extract and artifact.archive not in {None, "none"}:
                     extracted_to = root / f"{artifact.artifact_id}.extracted"
-                    safe_extract(target, extracted_to, archive_type=artifact.archive)
+                    safe_extract(
+                        target,
+                        extracted_to,
+                        archive_type=artifact.archive,
+                        ignored_members=set(artifact.ignored_archive_members),
+                    )
                 results.append(
                     ArtifactFetchResult(
                         artifact_id=artifact.artifact_id,
@@ -441,7 +494,12 @@ def fetch_source(
         extracted_to = None
         if extract and artifact.archive not in {None, "none"}:
             extracted_to = root / f"{artifact.artifact_id}.extracted"
-            safe_extract(target, extracted_to, archive_type=artifact.archive)
+            safe_extract(
+                target,
+                extracted_to,
+                archive_type=artifact.archive,
+                ignored_members=set(artifact.ignored_archive_members),
+            )
         results.append(
             ArtifactFetchResult(
                 artifact_id=artifact.artifact_id,
@@ -496,7 +554,9 @@ def verify_source_cache(source: CorpusSource, cache_root: str | Path) -> FetchRe
     root = Path(cache_root) / source.source_id
     results: list[ArtifactFetchResult] = []
     for artifact in source.artifacts:
-        target = root / artifact.filename
+        if not artifact.required:
+            continue
+        target = _artifact_cache_target(root, artifact)
         if artifact.url.startswith("git+"):
             verified = _verify_git_checkout(target, artifact)
             extracted_to = target

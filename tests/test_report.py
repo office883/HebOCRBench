@@ -3,8 +3,11 @@ from __future__ import annotations
 import csv
 import json
 
+import pytest
+
 from hebocrbench.baselines import reverse_text_prediction
 from hebocrbench.evaluator import evaluate_dataset
+from hebocrbench.modern_score import ModernScoreError, load_modern_report_bundle
 from hebocrbench.report import write_evaluation_artifacts
 
 
@@ -41,6 +44,21 @@ def test_run_manifest_records_unicode_and_dependency_versions(tmp_path, gold_pag
     assert manifest["unicode_data_version"]
     assert manifest["libraries"]["rapidfuzz"]
     assert manifest["libraries"]["regex"]
+    assert manifest["artifacts"]["metrics"]["sha256"]
+    assert manifest["artifacts"]["metrics"]["size_bytes"] == paths["metrics"].stat().st_size
+
+
+def test_modern_report_loader_rejects_metrics_tampering(tmp_path, gold_page):
+    run = evaluate_dataset([gold_page], [reverse_text_prediction(gold_page)])
+    paths = write_evaluation_artifacts(run, tmp_path)
+    metrics = json.loads(paths["metrics"].read_text(encoding="utf-8"))
+    metrics["recognition"]["line_gcer"] = 0.0
+    paths["metrics"].write_text(
+        json.dumps(metrics, ensure_ascii=False, sort_keys=True), encoding="utf-8"
+    )
+
+    with pytest.raises(ModernScoreError, match="metrics.json (?:size|hash) differs"):
+        load_modern_report_bundle(tmp_path)
 
 
 def test_run_manifest_records_modern_suite_evidence(tmp_path, gold_page):

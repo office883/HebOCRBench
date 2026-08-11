@@ -9,6 +9,9 @@ from hebocrbench.tracks import load_track, track_lock_payload, verify_track_lock
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED = [
+    "biblical-niqqud-synthetic-diagnostic-v1",
+    "historical-hebrew-press-mixed-v1",
+    "historical-pinkas-handwriting-v1",
     "modern-bidi-v1",
     "modern-forms-v1",
     "modern-handwriting-v1",
@@ -16,6 +19,7 @@ EXPECTED = [
     "modern-page-ocr-v1",
     "modern-robustness-v1",
     "modern-tables-v1",
+    "rashi-print-synthetic-diagnostic-v1",
 ]
 
 
@@ -27,6 +31,20 @@ def test_official_modern_tracks_lock_identity_policy():
     assert oracle.accepted_gold_tracks == ("modern_line_recognition", "modern_page_ocr")
     handwriting = load_track("modern-handwriting-v1")
     assert handwriting.accepted_gold_tracks == ("modern_handwriting",)
+    pinkas = load_track("historical-pinkas-handwriting-v1")
+    assert pinkas.accepted_gold_tracks == ("historical_pinkas_handwriting",)
+    assert pinkas.benchmark_config.matching.use_shared_ids is True
+    press = load_track("historical-hebrew-press-mixed-v1")
+    assert press.accepted_gold_tracks == ("historical_hebrew_press_mixed",)
+    assert press.prediction_mode == "oracle-layout"
+    assert "pure-Rashi" in press.description
+    niqqud = load_track("biblical-niqqud-synthetic-diagnostic-v1")
+    rashi = load_track("rashi-print-synthetic-diagnostic-v1")
+    assert niqqud.accepted_gold_tracks == ("biblical_niqqud_synthetic_diagnostic",)
+    assert "diacritics.mark_f1" in niqqud.primary_metrics
+    assert rashi.accepted_gold_tracks == ("rashi_print_synthetic_diagnostic",)
+    assert niqqud.benchmark_config.matching.use_shared_ids is True
+    assert rashi.benchmark_config.matching.use_shared_ids is True
 
 
 def test_authoritative_track_lock_is_generated_from_yaml_and_matches_package():

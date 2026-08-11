@@ -197,7 +197,13 @@ def _html_report(run: EvaluationRun, errors: list[dict[str, Any]]) -> str:
             </article>
             """
         )
-    errors_html = "".join(error_blocks) or "<p>לא נמצאו שורות שגויות.</p>"
+    if run.configuration.get("line_error_details_compacted"):
+        errors_html = (
+            "<p>פירוט שגיאות ברמת שורה הושמט במסלול robustness הגדול כדי לשמור "
+            "על צריכת זיכרון תחומה. כל מדדי העמוד, ה־slices והזוגות נשמרו וחושבו במלואם.</p>"
+        )
+    else:
+        errors_html = "".join(error_blocks) or "<p>לא נמצאו שורות שגויות.</p>"
 
     embedded_metrics = html.escape(json.dumps(m, ensure_ascii=False, indent=2))
     return f"""<!doctype html>
@@ -279,6 +285,7 @@ def write_evaluation_artifacts(
             writer.writerow({"metric": metric, "value": value})
 
     paths["html"].write_text(_html_report(run, errors), encoding="utf-8")
+    artifact_paths = {label: path for label, path in paths.items() if label != "run_manifest"}
     source_date_epoch = os.environ.get("SOURCE_DATE_EPOCH")
     if source_date_epoch:
         created = datetime.fromtimestamp(int(source_date_epoch), tz=timezone.utc)
@@ -296,6 +303,14 @@ def write_evaluation_artifacts(
         "conformance_status": run.metrics["conformance"]["status"],
         "model": dict(model_manifest or {}),
         "inputs": {},
+        "artifacts": {
+            label: {
+                "path": path.name,
+                "sha256": sha256_file(path),
+                "size_bytes": path.stat().st_size,
+            }
+            for label, path in sorted(artifact_paths.items())
+        },
     }
     if suite_evidence is not None:
         manifest["benchmark_suite"] = dict(suite_evidence)
@@ -305,6 +320,7 @@ def write_evaluation_artifacts(
             manifest["inputs"][label] = {
                 "path": str(source),
                 "sha256": sha256_file(source) if source.is_file() else None,
+                "size_bytes": source.stat().st_size if source.is_file() else None,
             }
     write_json(paths["run_manifest"], manifest)
     return paths

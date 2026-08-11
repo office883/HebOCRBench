@@ -1,4 +1,9 @@
-# מדדי HebOCRBench לעברית מודרנית
+# מדדי HebOCRBench וגבולות אגרגציה
+
+המדדים משותפים כאשר המשימה זהה, אבל יחידת הדיווח אינה משותפת: רק חמשת
+מסלולי הדפוס המודרני נכנסים ל־Modern headline. הרחבות אמיתיות מדווחות כל
+אחת בנפרד, diagnostics סינתטיים אינם מדורגים, ו־forms אינו מקבל ציון בלי
+gold אמיתי ברמת שדה.
 
 ## 1. ייצוג קנוני
 
@@ -18,7 +23,10 @@ CER משתמש בקוד־פוינטים; GCER משתמש ב־Extended Grapheme C
 
 ## 4. Modern Hebrew niqqud
 
-כאשר ניקוד מופיע במקור, מדווחים precision/recall/F1 לפי vowels, dagesh/mapiq ו־shin/sin dot. טעמי מקרא אינם חלק מה־gold הרשמי; הופעתם ב־prediction נספרת כהוספה/הזיה.
+כאשר ניקוד מופיע במקור, מדווחים precision/recall/F1 לפי vowels, dagesh/mapiq
+ו־shin/sin dot. ב־Modern headline, סימני מקרא שאינם ב־gold נספרים
+כהוספה/הזיה. ה־diagnostic הסינתטי של niqqud מכיל אפס טעמי מקרא ומדווח
+בנפרד; הוא אינו benchmark למקרא עם טעמים.
 
 ## 5. BiDi
 
@@ -59,4 +67,7 @@ CER משתמש בקוד־פוינטים; GCER משתמש ב־Extended Grapheme C
 
 ## 9. אגרגציה
 
-הציון הראשי הוא ממוצע גאומטרי משוקלל של חמשת מסלולי הליבה. מדווחים גם micro, macro-page, macro-document, worst-slice, median, p90/p95 ו־bootstrap confidence intervals ברמת מסמך.
+ה־Modern headline הוא ממוצע גאומטרי משוקלל של חמשת מסלולי הליבה. מדווחים
+גם micro, macro-page, macro-document, worst-slice, median, p90/p95
+ו־bootstrap confidence intervals ברמת מסמך. אין אגרגציה בין Modern print,
+כתב יד, דפוס היסטורי או diagnostics סינתטיים.

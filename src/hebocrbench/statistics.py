@@ -7,7 +7,7 @@ import math
 import random
 from typing import Any, Sequence
 
-from .alignment import error_rate, merge_alignments
+from .alignment import AlignmentResult, error_rate, merge_alignments
 
 
 def quantile(values: Sequence[float], probability: float) -> float:
@@ -30,9 +30,25 @@ def quantile(values: Sequence[float], probability: float) -> float:
 
 
 def _sample_metrics(pages: Sequence[Any]) -> dict[str, float]:
-    line_codepoints = [evaluation.codepoint for page in pages for evaluation in page._line_text]
-    line_graphemes = [evaluation.grapheme for page in pages for evaluation in page._line_text]
-    page_graphemes = [page._page_text.grapheme for page in pages if page._page_text is not None]
+    def alignment(value: Any) -> AlignmentResult:
+        return AlignmentResult(
+            n_ref=int(value.get("n_ref", 0)),
+            n_pred=int(value.get("n_pred", 0)),
+            substitutions=int(value.get("substitutions", 0)),
+            deletions=int(value.get("deletions", 0)),
+            insertions=int(value.get("insertions", 0)),
+            correct=int(value.get("correct", 0)),
+        )
+
+    line_codepoints = [
+        alignment(page.metrics["recognition"]["alignments"]["codepoint"]) for page in pages
+    ]
+    line_graphemes = [
+        alignment(page.metrics["recognition"]["alignments"]["grapheme"]) for page in pages
+    ]
+    page_graphemes = [
+        alignment(page.metrics["recognition"]["page_alignment"]["grapheme"]) for page in pages
+    ]
     return {
         "line_cer": error_rate(merge_alignments(line_codepoints)),
         "line_gcer": error_rate(merge_alignments(line_graphemes)),

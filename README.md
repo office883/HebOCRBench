@@ -1,17 +1,28 @@
-# HebOCRBench 1.0 — Modern Hebrew OCR Benchmark
+# HebOCRBench 1.0 — Hebrew OCR Benchmark
 
-HebOCRBench is a reproducible benchmark for **OCR of contemporary Modern Hebrew documents**. It evaluates not merely whether a model found approximately the right letters, but whether it produced a document that can actually be searched, cited and processed.
+HebOCRBench is a reproducible benchmark for Hebrew OCR. Its only composite
+score is the five-track **Modern Hebrew printed-document headline**. Other
+scientifically different families are carried in the same full-suite manifest
+but are always reported separately.
 
-The official scope is intentionally narrow:
+The v1 coverage is explicit:
 
-- Modern Hebrew print and contemporary public documents;
-- Modern Hebrew mixed with numbers, English, URLs, email addresses, identifiers and formulas;
-- blind page segmentation, layout and reading order;
-- tables and closed-schema forms;
-- controlled scan/camera degradations;
-- a separately reported Modern Hebrew handwriting extension.
+- five certified Modern Hebrew print roots covering Unicode/BiDi, line
+  recognition, blind page OCR, tables and controlled degradations;
+- separate real-data extensions for writer-disjoint Modern Hebrew handwriting,
+  a narrow six-page Pinkas handwriting subset, and a 34-page HaZefira
+  historical-press subset;
+- held-out synthetic diagnostics for niqqud and a single Noto Rashi typeface;
+- explicit missing-coverage entries for real Biblical text with cantillation,
+  pure-Rashi historical print and forms with field-level ground truth.
 
-The official v1 profiles **exclude** Yiddish, Biblical Hebrew, cantillated text, historical print and historical manuscripts.
+The Modern Hebrew headline does not include Yiddish, Biblical Hebrew,
+cantillated text, historical print or handwriting. No cross-family aggregate is
+defined. The synthetic diagnostics are non-rankable and cannot be cited as real
+Biblical, cantillation or historical-print results.
+
+The fail-closed audit of real Biblical and pure-Rashi source candidates is
+documented in [`docs/REAL_BIBLICAL_RASHI_SOURCE_AUDIT_HE.md`](docs/REAL_BIBLICAL_RASHI_SOURCE_AUDIT_HE.md).
 
 ## Non-negotiable RTL rule
 
@@ -25,17 +36,21 @@ For example, the visible RTL sentence:
 
 is stored in normal logical order. `2026` and `OCR-v2.1` retain their internal LTR order. Coordinates remain ordinary image coordinates; reading order is represented explicitly.
 
-## Official tracks
+## Official tracks and coverage targets
 
-| Track | Purpose | Headline |
-|---|---|---:|
-| `modern-bidi-v1` | strict logical-order Unicode/BiDi conformance | yes |
-| `modern-line-recognition-v1` | recognition on benchmark-provided line polygons | yes |
-| `modern-page-ocr-v1` | blind end-to-end page OCR, layout and reading order | yes |
-| `modern-tables-v1` | blind table presence, topology, cells and logical cell text | yes |
-| `modern-robustness-v1` | degradation pairs derived from frozen modern pages | yes |
-| `modern-forms-v1` | diagnostic closed-schema form extraction | no |
-| `modern-handwriting-v1` | writer-disjoint real human handwriting extension | no |
+| Track | Evidence | Reporting |
+|---|---|---|
+| `modern-bidi-v1` | certified Unicode/BiDi conformance root | Modern headline |
+| `modern-line-recognition-v1` | certified real public-document line root | Modern headline |
+| `modern-page-ocr-v1` | certified real public-document page root | Modern headline |
+| `modern-tables-v1` | certified real public-document table root | Modern headline |
+| `modern-robustness-v1` | certified degradation-pair root | Modern headline |
+| `modern-forms-v1` | **missing real field-level gold** | experimental, unscored |
+| `modern-handwriting-v1` | real human handwriting | separate extension |
+| `historical-pinkas-handwriting-v1` | 266 real public-fixed lines from six pages | separate narrow extension |
+| `historical-hebrew-press-mixed-v1` | certified 34-page real public-fixed HaZefira root, mixed square/Rashi print | separate narrow extension |
+| `biblical-niqqud-synthetic-diagnostic-v1` | 500 held-out synthetic niqqud lines; no cantillation | non-rankable diagnostic |
+| `rashi-print-synthetic-diagnostic-v1` | 500 held-out synthetic Noto Rashi lines | non-rankable diagnostic |
 
 The printed-document headline is a weighted geometric score over the five headline tracks. A model that fails BiDi conformance or completely collapses on one structural track cannot hide behind a good CER on easy lines.
 
@@ -49,7 +64,9 @@ The printed-document headline is a weighted geometric score over the five headli
 | robustness | 17% |
 | Unicode/BiDi | 12% |
 
-Forms and handwriting are published separately.
+Handwriting and historical press are published separately. `modern-forms-v1`
+has a scoring contract but no eligible root: the audited modern corpus contains
+zero `form_fields`, so v1 publishes no forms score.
 
 ## Core metrics
 
@@ -74,14 +91,16 @@ Forms and handwriting are published separately.
 - pairwise precedence accuracy;
 - order-sensitive and order-tolerant text coverage.
 
-### Tables and forms
+### Tables
 
 - table presence F1;
 - topology and cell-span F1;
 - grid-slot accuracy;
 - cell-position overlap;
-- logical cell-text GCER;
-- form field presence and exact value transcription.
+- logical cell-text GCER.
+
+Form-field presence and exact-value metrics remain specified for a future root
+with real field annotations. They are not evaluated or ranked in v1.
 
 ## Certified suite identity
 
@@ -111,11 +130,35 @@ Canonical public scientific profile:
 
 ### `modern-hebrew-development-v1`
 
-Adds the modern-print line development source for model development and baseline support. It does not change the representative hidden page-OCR test claim.
+Adds modern-print line data for development and baseline support. It does not
+change the public-fixed Modern Hebrew evaluation roots.
 
 ### `modern-hebrew-handwriting-v1`
 
 Separate writer-disjoint handwriting extension. It is never blended with print.
+
+### `historical-pinkas-handwriting-v1`
+
+Separate narrow Pinkas historical-handwriting extension. Its 266 real lines are
+public-fixed and page-disjoint from the cached training pages, but they come
+from one collection and have no writer identities. Its score is never blended
+with Modern Hebrew print or modern handwriting.
+
+### `historical-hebrew-press-mixed-v1`
+
+Separate real 34-page HaZefira historical-newspaper extension with 4,016 line
+identities verified across paired PAGE and ALTO annotations. Its frozen root
+passed all 12 certification gates. The source is public-fixed and includes both
+square and Rashi print at corpus level, but has no region- or line-level Rashi
+labels. It must not be reported as a pure-Rashi benchmark.
+
+### Synthetic diagnostics
+
+`biblical-niqqud-synthetic-diagnostic-v1` and
+`rashi-print-synthetic-diagnostic-v1` are public-fixed, held-out probes. Each is
+reported independently and is excluded from rankings and every headline. The
+niqqud probe contains no cantillation marks; the Rashi probe uses one synthetic
+font family and is not evidence about historical scans.
 
 Inspect the machine-readable contracts:
 
@@ -165,10 +208,35 @@ The output directory contains the canonical JSON report, Markdown summary and ru
 hebocrbench modern-score \
   --reports reports/by-track \
   --suite-lock modern-suite.lock.json \
+  --track-root modern-bidi-v1=/data/modern-bidi-v1 \
+  --track-root modern-line-recognition-v1=/data/modern-line-recognition-v1 \
+  --track-root modern-page-ocr-v1=/data/modern-page-ocr-v1 \
+  --track-root modern-tables-v1=/data/modern-tables-v1 \
+  --track-root modern-robustness-v1=/data/modern-robustness-v1 \
   --output modern-score.json
 ```
 
-The command refuses to combine reports when their suite, profile, registry, model identity, track contract or gold hashes differ.
+The command independently verifies every certified root, reconstructs the suite,
+re-evaluates the submitted predictions against the locked gold and refuses oracle-layout,
+gold-assisted, incomplete or mismatched reports. It does not trust editable metric files.
+
+## Full-suite manifest
+
+`full-suite.lock.json` records the Modern headline, real extensions, synthetic
+diagnostics and missing coverage in one tamper-evident manifest. It does not
+define a score across those families:
+
+```bash
+hebocrbench full-suite build \
+  --component-root modern-bidi-v1=/data/bidi \
+  --component-root modern-handwriting-v1=/data/handwriting \
+  --output full-suite.lock.json
+
+hebocrbench full-suite verify \
+  --lock full-suite.lock.json \
+  --component-root modern-bidi-v1=/data/bidi \
+  --component-root modern-handwriting-v1=/data/handwriting
+```
 
 ## Building a frozen suite
 
@@ -235,24 +303,33 @@ Degradation pages are children of frozen source pages. They inherit:
 - template family;
 - transcription;
 - reading order;
-- table/form structure.
+- table structure.
 
 Only the image bytes change. The track records degradation family, severity and parameters for blur, compression, skew, perspective, low contrast, illumination, speckle and related realistic defects.
 
 ## Participant and organizer packs
 
-The participant pack contains public train/dev gold and opaque test inputs. It never contains:
+The participant pack contains opaque evaluation inputs and no gold. It never
+contains:
 
-- hidden test text;
+- withheld evaluation gold;
 - original test source identifiers;
 - private source filenames;
 - the organizer HMAC key.
 
-The organizer pack contains hidden gold and the private ID map. Both packs are bound to the same dataset and suite fingerprints.
+The organizer pack contains the withheld gold and private ID map. Both packs
+are bound to the same dataset and suite fingerprints. The underlying sources
+are public-fixed; opaque IDs and withheld pack contents are an evaluation
+protocol, not a claim that the source material is unseen or uncontaminated.
 
 ## Release gate
 
-`scripts/build_v1_release.py` refuses to create a release without a valid certified Modern Hebrew suite lock. A release must also pass:
+`scripts/build_v1_release.py` refuses to create a release unless the Modern
+suite lock, the full-suite lock, and every root marked certified by the
+full-suite lock all re-hash to the same evidence. The release contains both
+locks plus a path-free component proof. `scripts/verify_v1_release.py` requires
+the release directory, its manifest, and the complete certified root mapping;
+it verifies the proof and all artifact bytes. A release must also pass:
 
 - source and package data synchronization;
 - registry/profile/track lock verification;
@@ -260,7 +337,8 @@ The organizer pack contains hidden gold and the private ID map. Both packs are b
 - Ruff and compile checks;
 - wheel and sdist construction;
 - isolated wheel installation;
-- SBOM and SHA-256 manifest generation;
+- complete SBOM, release manifest and SHA-256 membership verification;
+- byte-for-byte source-archive completeness against the release source tree;
 - source-tree hygiene and secret scanning.
 
 ## Repository layout

@@ -1,0 +1,33 @@
+{
+  "parent_selection_sha256": "4c0ebc58784d565f225b8a412ffa93146df4c417de479464f1d9f283ecf7af52",
+  "policy": {
+    "minimum_anchor_content": 0.98,
+    "minimum_critical_ltr_content": 1.0,
+    "minimum_local_order": 0.83,
+    "minimum_punctuation_content": 0.94,
+    "replacement_rule": "lowest unselected page in the same locked PDF satisfying the full quality contract and Modern-Hebrew content gate"
+  },
+  "replacements": [
+    {
+      "add_page": 26,
+      "document_id": "knesset-bill-12458079",
+      "pdf_sha256": "6c584719459959d456ad8efce4373960fc99f75767018eec5139e9ed7b7a20c3",
+      "rejected_evidence": {
+        "anchor_content": 1.0,
+        "anchor_order": 0.21978021978021978,
+        "critical_content": 1.0,
+        "local_order": 0.7990762124711316,
+        "punctuation_content": 1.0
+      },
+      "remove_page": 30,
+      "replacement_evidence": {
+        "anchor_content": 0.9829351535836177,
+        "anchor_order": 0.9728506787330317,
+        "critical_content": 1.0,
+        "local_order": 0.9715698393077874,
+        "punctuation_content": 0.9855072463768115
+      }
+    }
+  ],
+  "schema_version": "1.0"
+}

@@ -20,13 +20,15 @@ import subprocess
 from typing import Iterable, Mapping, Sequence
 import unicodedata
 
-import fitz
+import pymupdf as fitz
 from rapidfuzz.distance import Levenshtein
 
 from . import ConversionContext
 from ..bidi_metrics import first_strong_direction
 from ..modern_scope import contains_biblical_mark
 from ..unicode_utils import BIDI_CONTROLS, normalize_strict
+
+getattr(fitz, "no_recommend_layout", lambda: None)()
 
 
 class ModernPdfError(ValueError):
@@ -69,10 +71,105 @@ _TOKEN_RE = re.compile(
 _CLOSE_PUNCTUATION = frozenset(".,;:!?%)]}׳״")
 _OPEN_PUNCTUATION = frozenset("([{״")
 _JOINERS = frozenset("־-–—/")
+_PDF_GLYPH_REPAIRS = {
+    "\uf027": ("☎", "private-use telephone glyph mapped from the rendered footer"),
+    "\uf0b7": ("•", "private-use bullet glyph mapped from the rendered list marker"),
+}
+_ETH_RUN = re.compile(r"ð+")
+_FORM_SIGNAL_PATTERNS = {
+    "form_word": re.compile(r"\bטופס\b"),
+    "name_label": re.compile(r"\bשם(?:\s+מלא)?\s*[:：]"),
+    "date_label": re.compile(r"\bתאריך\s*[:：]"),
+    "signature_word": re.compile(r"\bחתימה\s*[:：]?"),
+    "identifier_label": re.compile(r"\bמספר\s+(?:זהות|תיק|בקשה)\b"),
+    "underscore_run": re.compile(r"_{3,}"),
+}
+
+
+def _is_latin_neighbor(char: str) -> bool:
+    return bool(char and char != "ð" and re.fullmatch(r"[A-Za-zÀ-ÖØ-öø-ÿ]", char))
+
+
+def _page_capability_evidence(text: str, *, table_count: int) -> dict[str, object]:
+    """Publish page-level slice evidence without pretending it is annotation.
+
+    Form signals are discovery hints only.  They must never be converted into
+    form fields without aligned human or source-structured values.
+    """
+
+    signals = [name for name, pattern in _FORM_SIGNAL_PATTERNS.items() if pattern.search(text)]
+    return {
+        "mixed_bidi": bool(re.search(r"[\u05D0-\u05EA]", text))
+        and bool(re.search(r"[A-Za-z0-9]", text)),
+        "table_count": int(table_count),
+        "form_signal_count": len(signals),
+        "form_signals": signals,
+        "form_ground_truth_available": False,
+    }
+
+
+def _repair_modern_pdf_text(text: str) -> tuple[str, list[dict[str, object]]]:
+    """Repair only visually verified, deterministic PDF cmap artifacts.
+
+    Some public PDFs map a Hebrew nun to a standalone U+00F0 and legacy symbol
+    fonts expose telephone/bullet glyphs in the private-use area.  These are
+    text-layer encoding defects, not characters visible on the page.  The
+    repair allowlist is intentionally tiny and every substitution is counted.
+    Latin words containing a genuine eth remain untouched.
+    """
+
+    normalized = normalize_strict(text)
+    repairs: list[dict[str, object]] = []
+    bom_count = normalized.count("\ufeff")
+    if bom_count:
+        normalized = normalized.replace("\ufeff", "")
+        repairs.append(
+            {
+                "source": "U+FEFF",
+                "replacement": "",
+                "count": bom_count,
+                "reason": "embedded PDF BOM removed",
+            }
+        )
+    for source, (replacement, reason) in _PDF_GLYPH_REPAIRS.items():
+        count = normalized.count(source)
+        if count:
+            normalized = normalized.replace(source, replacement)
+            repairs.append(
+                {
+                    "source": f"U+{ord(source):04X}",
+                    "replacement": f"U+{ord(replacement):04X}",
+                    "count": count,
+                    "reason": reason,
+                }
+            )
+    eth_count = 0
+
+    def repair_eth_run(match: re.Match[str]) -> str:
+        nonlocal eth_count
+        before = normalized[match.start() - 1] if match.start() else ""
+        after = normalized[match.end()] if match.end() < len(normalized) else ""
+        if _is_latin_neighbor(before) or _is_latin_neighbor(after):
+            return match.group(0)
+        eth_count += len(match.group(0))
+        return "נ" * len(match.group(0))
+
+    normalized = _ETH_RUN.sub(repair_eth_run, normalized)
+    if eth_count:
+        repairs.append(
+            {
+                "source": "U+00F0",
+                "replacement": "U+05E0",
+                "count": eth_count,
+                "reason": "standalone legacy-font glyph mapped to visible Hebrew nun",
+            }
+        )
+    return unicodedata.normalize("NFC", normalized), repairs
 
 
 def _comparison_tokens(text: str) -> tuple[str, ...]:
-    normalized = normalize_strict(text).replace("\f", " ")
+    normalized, _ = _repair_modern_pdf_text(text)
+    normalized = normalized.replace("\f", " ")
     return tuple(match.group(0) for match in _TOKEN_RE.finditer(normalized))
 
 
@@ -156,7 +253,8 @@ def text_layer_agreement(
 def _smart_join(tokens: Iterable[str]) -> str:
     output = ""
     for raw in tokens:
-        token = normalize_strict(str(raw)).strip()
+        token, _ = _repair_modern_pdf_text(str(raw))
+        token = token.strip()
         if not token:
             continue
         if not output:
@@ -206,7 +304,17 @@ def _words(page: fitz.Page) -> list[_Word]:
         if len(raw) < 8:
             continue
         x0, y0, x1, y1, text, block, line, word = raw[:8]
-        clean = normalize_strict(str(text)).strip()
+        raw_text = str(text)
+        # A small set of legacy Hebrew PDFs exposes the visible letter nun as
+        # a separate U+00F0 word object.  Keep that exact sentinel until the
+        # geometry layer can join it to the physically contiguous fragments
+        # of the same Hebrew word.  All other deterministic cmap repairs are
+        # safe to apply at word-object level.
+        if "ð" in raw_text:
+            clean = raw_text
+        else:
+            clean, _ = _repair_modern_pdf_text(raw_text)
+        clean = clean.strip()
         if not clean or clean == "\ufffd":
             continue
         result.append(
@@ -319,7 +427,10 @@ def _pdftotext_layout(pdf_path: Path, page_number: int) -> str:
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", "replace").strip()
         raise ModernPdfError(f"pdftotext failed for page {page_number}: {detail}")
-    return normalize_strict(completed.stdout.decode("utf-8", "replace").replace("\f", ""))
+    value, _ = _repair_modern_pdf_text(
+        completed.stdout.decode("utf-8", "replace").replace("\f", "")
+    )
+    return value
 
 
 def _reading_edges(regions: Sequence[dict[str, object]]) -> list[list[str]]:
@@ -347,7 +458,8 @@ def _extract_tables(page: fitz.Page, scale: float) -> list[dict[str, object]]:
                 bbox = raw_cells[index] if index < len(raw_cells) else None
                 text = ""
                 if row < len(matrix) and matrix[row] is not None and col < len(matrix[row]):
-                    text = normalize_strict(str(matrix[row][col] or "")).strip()
+                    text, _ = _repair_modern_pdf_text(str(matrix[row][col] or ""))
+                    text = text.strip()
                 cell: dict[str, object] = {
                     "row_start": row,
                     "row_end": row + 1,
@@ -417,6 +529,18 @@ def convert_modern_pdf_page(
             raise ModernPdfError("Biblical accent marks are outside the Modern Hebrew scope")
         if any(char in BIDI_CONTROLS for char in pymupdf_text):
             raise ModernPdfError("text layer contains forbidden directional controls")
+        forbidden_categories = sorted(
+            {
+                f"U+{ord(char):04X}"
+                for char in pymupdf_text
+                if unicodedata.category(char) in {"Co", "Cs", "Cf"}
+            }
+        )
+        if forbidden_categories:
+            raise ModernPdfError(
+                "text layer contains unrepaired private/control characters: "
+                + ", ".join(forbidden_categories)
+            )
 
         poppler_text = _pdftotext_layout(source, page_number)
         agreement = text_layer_agreement(
@@ -434,11 +558,17 @@ def convert_modern_pdf_page(
         image_path.write_bytes(png_bytes)
         image_sha256 = hashlib.sha256(png_bytes).hexdigest()
 
+        tables = _extract_tables(page, scale)
         metadata = context.metadata(annotation_path=f"{source.as_posix()}#page={page_number}")
+        raw_word_text = "\n".join(
+            str(word[4]) for word in page.get_text("words", sort=False) if len(word) >= 5
+        )
+        _, text_layer_repairs = _repair_modern_pdf_text(raw_word_text)
         metadata.update(
             {
                 "pdf_page_number": page_number,
                 "pdf_page_count": document.page_count,
+                **_page_capability_evidence(pymupdf_text, table_count=len(tables)),
                 "text_layer_verification": {
                     "agreement": agreement,
                     "minimum": min_agreement,
@@ -447,6 +577,8 @@ def convert_modern_pdf_page(
                     "pdftotext_token_count": len(_comparison_tokens(poppler_text)),
                     "pymupdf_text_sha256": hashlib.sha256(pymupdf_text.encode("utf-8")).hexdigest(),
                     "pdftotext_sha256": hashlib.sha256(poppler_text.encode("utf-8")).hexdigest(),
+                    "repair_policy": "verified-pdf-cmap-repair-v1",
+                    "repairs": text_layer_repairs,
                 },
             }
         )
@@ -466,7 +598,7 @@ def convert_modern_pdf_page(
             "metadata": metadata,
             "regions": regions,
             "reading_order": {"edges": _reading_edges(regions)},
-            "tables": _extract_tables(page, scale),
+            "tables": tables,
             "form_fields": [],
         }
     finally:
