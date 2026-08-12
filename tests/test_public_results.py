@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -62,7 +64,11 @@ def _make_run(root: Path, *, system_id: str = "fixture::1") -> Path:
                 "missing_page_ids": [],
                 "extra_page_ids": [],
             },
-            "operational": {"evaluated_pages": 1, "latency_ms_p50": float(index)},
+            "operational": {
+                "evaluated_pages": 1,
+                "api_failures": 0,
+                "latency_ms_p50": float(index),
+            },
             "recognition": {"line_gcer": index / 10},
         }
         _write_json(report / "metrics.json", metrics)
@@ -180,6 +186,201 @@ def _make_run(root: Path, *, system_id: str = "fixture::1") -> Path:
     return root
 
 
+_REAL_EXTENSION_TRACKS = (
+    "modern-handwriting-v1",
+    "historical-hebrew-press-mixed-v1",
+    "historical-pinkas-handwriting-v1",
+)
+_SYNTHETIC_DIAGNOSTIC_TRACKS = (
+    "biblical-niqqud-synthetic-diagnostic-v1",
+    "rashi-print-synthetic-diagnostic-v1",
+)
+_EXTENSION_TRACKS = (*_REAL_EXTENSION_TRACKS, *_SYNTHETIC_DIAGNOSTIC_TRACKS)
+
+
+def _make_extension_run(root: Path, *, engine: str, legacy_tesseract: bool = False) -> Path:
+    if engine == "tesseract":
+        base_model: dict[str, object] = {
+            "system_id": "tesseract::fixture-5.5",
+            "family": "tesseract",
+            "name": "Tesseract",
+            "version": "fixture-5.5",
+        }
+    else:
+        base_model = {
+            "system_id": f"surya-ocr-2::{_sha('model')}::{_sha('mmproj')}",
+            "family": "surya-ocr-2",
+            "name": "Surya OCR 2",
+            "version": f"gguf-sha256-{_sha('model')}",
+            "artifacts": {
+                "model_sha256": _sha("model"),
+                "mmproj_sha256": _sha("mmproj"),
+            },
+            "engine": "llama.cpp",
+            "engine_version": "fixture-llama.cpp",
+            "inference_backend": "server",
+            "server_parallel": 4,
+            "server_context_size": 32768,
+            "server_context_per_slot": 8192,
+            "server_url": "http://127.0.0.1:9999/v1/chat/completions",
+        }
+    tracks: dict[str, object] = {}
+    for index, track_id in enumerate(_EXTENSION_TRACKS, start=1):
+        synthetic = track_id in _SYNTHETIC_DIAGNOSTIC_TRACKS
+        reporting_class = "synthetic_diagnostic" if synthetic else "separate_real_extension"
+        press = track_id == "historical-hebrew-press-mixed-v1"
+        oracle = press and engine == "tesseract"
+        input_mode = (
+            "oracle_layout_line_crops"
+            if oracle
+            else "blind_full_page_image"
+            if press
+            else "blind_whole_line_image"
+        )
+        adapter = (
+            "tesseract_oracle_layout_line_crops"
+            if oracle
+            else "surya2_llamacpp_server_page_e2e"
+            if press
+            else "fixture_line_image"
+        )
+        prediction = root / "predictions" / f"{track_id}.jsonl"
+        prediction.parent.mkdir(parents=True, exist_ok=True)
+        prediction.write_text('{"page_id":"extension-page"}\n', encoding="utf-8")
+        gold = root / "datasets" / track_id / "gold.jsonl"
+        gold.parent.mkdir(parents=True, exist_ok=True)
+        gold.write_text('{"page_id":"extension-page"}\n', encoding="utf-8")
+        report = root / "reports" / track_id
+        report.mkdir(parents=True, exist_ok=True)
+        metrics = {
+            "coverage": {
+                "gold_pages": 1,
+                "submitted_prediction_pages": 1,
+                "matched_prediction_pages": 1,
+                "missing_prediction_pages": 0,
+                "extra_prediction_pages": 0,
+                "missing_page_ids": [],
+                "extra_page_ids": [],
+            },
+            "operational": {
+                "evaluated_pages": 1,
+                "api_failures": 0,
+                "latency_ms_p50": float(index),
+            },
+            "recognition": {"line_gcer": index / 10},
+        }
+        _write_json(report / "metrics.json", metrics)
+        (report / "errors.jsonl").write_text("", encoding="utf-8")
+        (report / "per_page.jsonl").write_text(
+            '{"page_id":"extension-page","line_gcer":0.1}\n', encoding="utf-8"
+        )
+        (report / "report.html").write_text("<p>extension report</p>\n", encoding="utf-8")
+        (report / "summary.csv").write_text("metric,value\nline_gcer,0.1\n", encoding="utf-8")
+        artifacts = {
+            name: _artifact(report / filename)
+            for name, filename in {
+                "errors": "errors.jsonl",
+                "html": "report.html",
+                "metrics": "metrics.json",
+                "per_page": "per_page.jsonl",
+                "summary": "summary.csv",
+            }.items()
+        }
+        configuration: dict[str, object] = {
+            "official_track_id": track_id,
+            "official_track_version": "1.0.0",
+            "official_track_fingerprint": _sha(f"extension-track-{index}"),
+            "evaluation_split": "diagnostic" if synthetic else "test",
+            "source_evaluation_pages": 1,
+            "evaluated_evaluation_pages": 1,
+            "evaluation_selection_sha256": _sha(f"selection-{index}"),
+            "baseline_workers": 4,
+            "limited_smoke_run": False,
+            "reporting_class": reporting_class,
+            "modern_headline_eligible": False,
+            "synthetic_diagnostic": synthetic,
+            "input_mode": input_mode,
+        }
+        manifest_model = {
+            **base_model,
+            "runner": "hebocrbench.baseline_runner",
+            "runner_schema_version": "1.0",
+            "input_mode": input_mode,
+            "oracle_layout": oracle,
+            "adapter": adapter,
+        }
+        if not legacy_tesseract:
+            configuration["oracle_layout"] = oracle
+            configuration["gold_assistance"] = oracle
+            manifest_model["gold_assistance"] = oracle
+        run_manifest = {
+            "benchmark": "HebOCRBench",
+            "configuration": configuration,
+            "model": manifest_model,
+            "created_at_utc": f"2026-08-12T01:00:0{index}+00:00",
+            "evaluator_version": "1.0.0",
+            "unicode_data_version": "15.0.0",
+            "python": "3.12 fixture",
+            "platform": "fixture-arm64",
+            "libraries": {"fixture": "1.0"},
+            "inputs": {
+                "gold": {
+                    "path": str(gold),
+                    "sha256": hashlib.sha256(gold.read_bytes()).hexdigest(),
+                    "size_bytes": gold.stat().st_size,
+                },
+                "predictions": {
+                    "path": str(prediction),
+                    "sha256": hashlib.sha256(prediction.read_bytes()).hexdigest(),
+                    "size_bytes": prediction.stat().st_size,
+                },
+            },
+            "artifacts": artifacts,
+        }
+        _write_json(report / "run_manifest.json", run_manifest)
+        track_summary: dict[str, object] = {
+            "track_id": track_id,
+            "model": base_model,
+            "evaluation_split": "diagnostic" if synthetic else "test",
+            "selected_pages": 1,
+            "source_evaluation_pages": 1,
+            "selection_sha256": _sha(f"selection-{index}"),
+            "failures": 0,
+            "api_failures": 0,
+            "prediction_path": str(prediction),
+            "reporting_class": reporting_class,
+            "modern_headline_eligible": False,
+            "diagnostic_only": synthetic,
+            "input_mode": input_mode,
+        }
+        if not legacy_tesseract:
+            track_summary["oracle_layout"] = oracle
+            track_summary["gold_assistance"] = oracle
+            track_summary["adapter"] = adapter
+        tracks[track_id] = track_summary
+
+    summary = {
+        "benchmark": "HebOCRBench separate extensions and diagnostics",
+        "runner_schema_version": "1.0",
+        "engine": engine,
+        "model": base_model,
+        "workers": 4,
+        "limited_smoke_run": False,
+        "reporting_policy": {
+            "modern_headline_blending": False,
+            "combined_score": None,
+            "synthetic_diagnostics_rankable": False,
+        },
+        "groups": {
+            "separate_real_extensions": list(_REAL_EXTENSION_TRACKS),
+            "synthetic_diagnostics": list(_SYNTHETIC_DIAGNOSTIC_TRACKS),
+        },
+        "tracks": tracks,
+    }
+    _write_json(root / "separate-baseline-run.json", summary)
+    return root
+
+
 def _tree_hashes(root: Path) -> dict[str, str]:
     return {
         path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
@@ -265,3 +466,91 @@ def test_public_results_verifier_rejects_tampered_compact_payload(tmp_path):
 
     with pytest.raises(PublicResultsError, match="payload hash or size differs"):
         verify_public_results_pack(public)
+
+
+def test_extension_results_preserve_tesseract_oracle_and_surya_blind_contracts(tmp_path):
+    tesseract = _make_extension_run(
+        tmp_path / "tesseract-extensions",
+        engine="tesseract",
+        legacy_tesseract=True,
+    )
+    surya = _make_extension_run(tmp_path / "surya-extensions", engine="surya2-llamacpp")
+    public = tmp_path / "public"
+
+    manifest = build_public_results_pack(
+        {},
+        public,
+        extension_runs={"tesseract": tesseract, "surya2": surya},
+    )
+
+    assert verify_public_results_pack(public) == manifest
+    assert set(manifest["extension_results"]) == {"surya2", "tesseract"}
+    tesseract_result = json.loads(
+        (public / "extension-results" / "tesseract" / "result.json").read_text()
+    )
+    surya_result = json.loads((public / "extension-results" / "surya2" / "result.json").read_text())
+    press = "historical-hebrew-press-mixed-v1"
+    assert tesseract_result["tracks"][press]["input_mode"] == "oracle_layout_line_crops"
+    assert tesseract_result["tracks"][press]["oracle_layout"] is True
+    assert tesseract_result["tracks"][press]["gold_assistance"] is True
+    assert surya_result["tracks"][press]["input_mode"] == "blind_full_page_image"
+    assert surya_result["tracks"][press]["oracle_layout"] is False
+    assert surya_result["tracks"][press]["gold_assistance"] is False
+    for result in (tesseract_result, surya_result):
+        assert result["reporting_policy"] == {
+            "combined_score": None,
+            "modern_headline_blending": False,
+            "synthetic_diagnostics_rankable": False,
+        }
+        assert result["complete_run_summary"]["evaluated_items"] == 5
+        assert result["source_artifact_attestation"]["artifact_count"] == 41
+        assert all(track["ranked_in_pack"] is False for track in result["tracks"].values())
+    assert not list(public.rglob("*.jsonl"))
+    assert not list(public.rglob("*gold*"))
+    assert not list(public.rglob("*prediction*"))
+
+
+def test_extension_results_reject_rankable_synthetic_policy(tmp_path):
+    source = _make_extension_run(tmp_path / "extensions", engine="tesseract")
+    summary_path = source / "separate-baseline-run.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["reporting_policy"]["synthetic_diagnostics_rankable"] = True
+    _write_json(summary_path, summary)
+
+    with pytest.raises(PublicResultsError, match="permits ranking or blending"):
+        build_public_results_pack({}, tmp_path / "public", extension_runs={"tesseract": source})
+
+
+def test_extension_results_reject_surya_oracle_press(tmp_path):
+    source = _make_extension_run(tmp_path / "extensions", engine="surya2-llamacpp")
+    manifest_path = source / "reports" / "historical-hebrew-press-mixed-v1" / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["model"]["oracle_layout"] = True
+    _write_json(manifest_path, manifest)
+
+    with pytest.raises(PublicResultsError, match="oracle_layout differs"):
+        build_public_results_pack({}, tmp_path / "public", extension_runs={"surya2": source})
+
+
+def test_public_results_cli_accepts_extension_only_runs(tmp_path):
+    source = _make_extension_run(tmp_path / "extensions", engine="tesseract")
+    public = tmp_path / "public"
+    script = Path(__file__).resolve().parents[1] / "scripts" / "build_public_results.py"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--extension-run",
+            f"tesseract={source}",
+            "--output",
+            str(public),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout)["extension_results"]["tesseract"]["track_count"] == 5
+    assert verify_public_results_pack(public)["extension_results"]["tesseract"]

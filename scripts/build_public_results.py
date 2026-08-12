@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a compact, privacy-safe public pack from completed Modern baselines."""
+"""Build a compact public pack from completed Modern and extension baselines."""
 
 from __future__ import annotations
 
@@ -40,9 +40,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--run",
         action="append",
-        required=True,
+        default=[],
         metavar="NAME=PATH",
         help="completed Modern baseline directory; repeat for each model",
+    )
+    parser.add_argument(
+        "--extension-run",
+        action="append",
+        default=[],
+        metavar="NAME=PATH",
+        help="completed separate extension/diagnostic directory; repeat for each model",
     )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
@@ -53,7 +60,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         runs = _parse_runs(args.run)
-        manifest = build_public_results_pack(runs, args.output, clean=args.clean)
+        extension_runs = _parse_runs(args.extension_run)
+        manifest = build_public_results_pack(
+            runs,
+            args.output,
+            extension_runs=extension_runs,
+            clean=args.clean,
+        )
     except PublicResultsError as exc:
         parser.error(str(exc))
     print(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True))

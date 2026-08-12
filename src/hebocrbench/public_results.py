@@ -72,6 +72,22 @@ _SUITE_COMMON_FIELDS = (
     "registry_fingerprint",
 )
 _REQUIRED_REPORT_ARTIFACTS = {"errors", "html", "metrics", "per_page", "summary"}
+_REAL_EXTENSION_TRACKS = (
+    "modern-handwriting-v1",
+    "historical-hebrew-press-mixed-v1",
+    "historical-pinkas-handwriting-v1",
+)
+_SYNTHETIC_DIAGNOSTIC_TRACKS = (
+    "biblical-niqqud-synthetic-diagnostic-v1",
+    "rashi-print-synthetic-diagnostic-v1",
+)
+_ALL_EXTENSION_TRACKS = (*_REAL_EXTENSION_TRACKS, *_SYNTHETIC_DIAGNOSTIC_TRACKS)
+_HISTORICAL_PRESS_TRACK = "historical-hebrew-press-mixed-v1"
+_EXTENSION_REPORTING_POLICY = {
+    "combined_score": None,
+    "modern_headline_blending": False,
+    "synthetic_diagnostics_rankable": False,
+}
 
 
 def _load_mapping(path: Path, label: str) -> dict[str, Any]:
@@ -228,6 +244,9 @@ def _verify_complete_coverage(
     evaluated = _integer(
         operational.get("evaluated_pages"), f"{track_id}.operational.evaluated_pages"
     )
+    operational_api_failures = _integer(
+        operational.get("api_failures"), f"{track_id}.operational.api_failures"
+    )
     prediction_lines = _integer(prediction.get("line_count"), f"{track_id}.prediction lines")
     expected_equal = {
         "source_evaluation_pages": source_pages,
@@ -242,10 +261,12 @@ def _verify_complete_coverage(
             f"{track_id} is not a complete full-coverage run: "
             f"selected={selected}, observed={expected_equal}"
         )
-    if failures or api_failures or missing or extra:
+    if failures or api_failures or operational_api_failures or missing or extra:
         raise PublicResultsError(
             f"{track_id} has failures or incomplete coverage: "
-            f"failures={failures}, api_failures={api_failures}, missing={missing}, extra={extra}"
+            f"failures={failures}, api_failures={api_failures}, "
+            f"operational_api_failures={operational_api_failures}, "
+            f"missing={missing}, extra={extra}"
         )
     return {
         "selected_pages": selected,
@@ -258,6 +279,7 @@ def _verify_complete_coverage(
         "prediction_jsonl_records": prediction_lines,
         "runner_failures": failures,
         "api_failures": api_failures,
+        "operational_api_failures": operational_api_failures,
         "complete": True,
     }
 
@@ -492,7 +514,329 @@ def _build_result(source_root: Path, destination: Path, result_name: str) -> dic
     return payload
 
 
-def _readme(result_payloads: Mapping[str, Mapping[str, Any]]) -> str:
+def _extension_track_contract(
+    track_id: str,
+    engine: object,
+) -> tuple[str, bool, bool]:
+    """Return the only accepted input/oracle/gold-assistance contract."""
+
+    if track_id != _HISTORICAL_PRESS_TRACK:
+        return "blind_whole_line_image", False, False
+    if engine == "tesseract":
+        return "oracle_layout_line_crops", True, True
+    if engine == "surya2-llamacpp":
+        return "blind_full_page_image", False, False
+    raise PublicResultsError(
+        "historical Hebrew press extension requires Tesseract oracle crops "
+        "or blind full-page Surya OCR 2"
+    )
+
+
+def _consistent_optional_field(
+    expected: object,
+    label: str,
+    *sources: Mapping[str, Any],
+) -> None:
+    for source in sources:
+        if label in source and source[label] != expected:
+            raise PublicResultsError(
+                f"extension {label} differs across runner/report evidence: "
+                f"expected {expected!r}, got {source[label]!r}"
+            )
+
+
+def _build_extension_result(
+    source_root: Path,
+    destination: Path,
+    result_name: str,
+) -> dict[str, Any]:
+    baseline_path = source_root / "separate-baseline-run.json"
+    baseline = _load_mapping(baseline_path, "separate-baseline-run.json")
+    if baseline.get("benchmark") != "HebOCRBench separate extensions and diagnostics":
+        raise PublicResultsError(f"{result_name} is not an extension baseline run")
+    if baseline.get("limited_smoke_run") is not False:
+        raise PublicResultsError(f"{result_name} is not a full extension baseline run")
+    if baseline.get("reporting_policy") != _EXTENSION_REPORTING_POLICY:
+        raise PublicResultsError(
+            f"{result_name} extension reporting policy permits ranking or blending"
+        )
+    groups = _mapping(baseline.get("groups"), f"{result_name}.groups")
+    expected_groups = {
+        "separate_real_extensions": list(_REAL_EXTENSION_TRACKS),
+        "synthetic_diagnostics": list(_SYNTHETIC_DIAGNOSTIC_TRACKS),
+    }
+    if dict(groups) != expected_groups:
+        raise PublicResultsError(
+            f"{result_name} must contain exactly the five canonical extension tracks"
+        )
+    track_runs = _mapping(baseline.get("tracks"), f"{result_name}.tracks")
+    if set(track_runs) != set(_ALL_EXTENSION_TRACKS):
+        raise PublicResultsError(
+            f"{result_name} must contain exactly the five canonical extension tracks"
+        )
+    engine = baseline.get("engine")
+    if engine not in {"tesseract", "surya2-llamacpp"}:
+        raise PublicResultsError(f"unsupported extension engine: {engine!r}")
+    workers = _integer(baseline.get("workers"), f"{result_name}.workers")
+    if workers <= 0:
+        raise PublicResultsError(f"{result_name}.workers must be positive")
+    baseline_model = _mapping(baseline.get("model"), f"{result_name}.model")
+
+    source_artifacts: dict[str, dict[str, object]] = {
+        "separate-baseline-run.json": _artifact_record(_measure_file(baseline_path))
+    }
+    common_model: dict[str, Any] | None = None
+    common_runtime: dict[str, Any] | None = None
+    public_tracks: dict[str, dict[str, Any]] = {}
+    total_pages = 0
+    total_failures = 0
+    destination.mkdir(parents=True, exist_ok=True)
+
+    for track_id in _ALL_EXTENSION_TRACKS:
+        track_run = _mapping(track_runs[track_id], f"{result_name}.tracks.{track_id}")
+        expected_class = (
+            "synthetic_diagnostic"
+            if track_id in _SYNTHETIC_DIAGNOSTIC_TRACKS
+            else "separate_real_extension"
+        )
+        expected_synthetic = track_id in _SYNTHETIC_DIAGNOSTIC_TRACKS
+        expected_input, expected_oracle, expected_gold_assistance = _extension_track_contract(
+            track_id, engine
+        )
+
+        report_dir = source_root / "reports" / track_id
+        manifest_path = report_dir / "run_manifest.json"
+        manifest = _load_mapping(manifest_path, f"{track_id} run manifest")
+        manifest_model = _mapping(manifest.get("model"), f"{track_id}.model")
+        identity = _model_identity(manifest_model)
+        for field, expected in baseline_model.items():
+            if manifest_model.get(field) != expected:
+                raise PublicResultsError(f"{track_id} runner and report model {field} differ")
+        if common_model is None:
+            common_model = identity
+        elif common_model != identity:
+            raise PublicResultsError(f"{result_name} model identity differs across tracks")
+
+        runtime = _runtime_identity(manifest)
+        if common_runtime is None:
+            common_runtime = runtime
+        elif common_runtime != runtime:
+            raise PublicResultsError(f"{result_name} runtime identity differs across tracks")
+
+        configuration = _mapping(manifest.get("configuration"), f"{track_id}.configuration")
+        if configuration.get("official_track_id") != track_id:
+            raise PublicResultsError(f"{track_id} report has the wrong official track id")
+        if configuration.get("reporting_class") != expected_class:
+            raise PublicResultsError(f"{track_id} has the wrong reporting class")
+        if configuration.get("synthetic_diagnostic") is not expected_synthetic:
+            raise PublicResultsError(f"{track_id} synthetic diagnostic flag differs")
+        if configuration.get("modern_headline_eligible") is not False:
+            raise PublicResultsError(f"{track_id} cannot be eligible for the Modern headline")
+        if configuration.get("baseline_workers") != workers:
+            raise PublicResultsError(f"{track_id} report worker count differs")
+        if configuration.get("limited_smoke_run") is not False:
+            raise PublicResultsError(f"{track_id} report is a smoke run")
+        _consistent_optional_field(
+            expected_class,
+            "reporting_class",
+            track_run,
+            configuration,
+        )
+        _consistent_optional_field(
+            expected_synthetic,
+            "diagnostic_only",
+            track_run,
+        )
+        _consistent_optional_field(
+            False,
+            "modern_headline_eligible",
+            track_run,
+            configuration,
+        )
+        _consistent_optional_field(
+            expected_input,
+            "input_mode",
+            track_run,
+            configuration,
+            manifest_model,
+        )
+        _consistent_optional_field(
+            expected_oracle,
+            "oracle_layout",
+            track_run,
+            configuration,
+            manifest_model,
+        )
+        _consistent_optional_field(
+            expected_gold_assistance,
+            "gold_assistance",
+            track_run,
+            configuration,
+            manifest_model,
+        )
+        adapter = manifest_model.get("adapter")
+        if not isinstance(adapter, str) or not adapter:
+            raise PublicResultsError(f"{track_id} report model has no adapter identity")
+        _consistent_optional_field(adapter, "adapter", track_run)
+
+        for summary_field, configuration_field in (
+            ("evaluation_split", "evaluation_split"),
+            ("source_evaluation_pages", "source_evaluation_pages"),
+            ("selected_pages", "evaluated_evaluation_pages"),
+            ("selection_sha256", "evaluation_selection_sha256"),
+        ):
+            if track_run.get(summary_field) != configuration.get(configuration_field):
+                raise PublicResultsError(f"{track_id} runner and report {summary_field} differ")
+        selection_sha = _assert_sha256(
+            track_run.get("selection_sha256"), f"{track_id}.selection_sha256"
+        )
+        track_fingerprint = _assert_sha256(
+            configuration.get("official_track_fingerprint"),
+            f"{track_id}.official_track_fingerprint",
+        )
+
+        declared_artifacts = _mapping(manifest.get("artifacts"), f"{track_id}.artifacts")
+        if not _REQUIRED_REPORT_ARTIFACTS.issubset(declared_artifacts):
+            missing = sorted(_REQUIRED_REPORT_ARTIFACTS - set(declared_artifacts))
+            raise PublicResultsError(f"{track_id} report manifest lacks artifacts: {missing}")
+        metrics: dict[str, Any] | None = None
+        for artifact_name in sorted(declared_artifacts):
+            declaration = _mapping(
+                declared_artifacts[artifact_name], f"{track_id}.artifacts.{artifact_name}"
+            )
+            relative = _relative_report_artifact_path(
+                declaration.get("path"), f"{track_id}.artifacts.{artifact_name}"
+            )
+            artifact_path = report_dir / relative
+            measured = _verify_declared_artifact(
+                artifact_path, declaration, f"{track_id}.artifacts.{artifact_name}"
+            )
+            logical_path = f"reports/{track_id}/{relative.as_posix()}"
+            included_as = None
+            if artifact_name == "metrics":
+                metrics = _load_mapping(artifact_path, f"{track_id} metrics")
+                _assert_public_value(metrics, f"{result_name}.{track_id}.metrics")
+                public_metrics_path = (
+                    f"extension-results/{result_name}/tracks/{track_id}/metrics.json"
+                )
+                metrics_destination = destination / "tracks" / track_id / "metrics.json"
+                metrics_destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(artifact_path, metrics_destination)
+                included_as = public_metrics_path
+            source_artifacts[logical_path] = _artifact_record(measured, included_as=included_as)
+        if metrics is None:
+            raise PublicResultsError(f"{track_id} has no metrics artifact")
+        source_artifacts[f"reports/{track_id}/run_manifest.json"] = _artifact_record(
+            _measure_file(manifest_path)
+        )
+
+        inputs = _mapping(manifest.get("inputs"), f"{track_id}.inputs")
+        declared_prediction = _mapping(inputs.get("predictions"), f"{track_id}.inputs.predictions")
+        prediction_path = source_root / "predictions" / f"{track_id}.jsonl"
+        prediction_measured = _verify_declared_artifact(
+            prediction_path, declared_prediction, f"{track_id}.inputs.predictions"
+        )
+        runner_prediction = track_run.get("prediction_path")
+        if (
+            not isinstance(runner_prediction, str)
+            or Path(runner_prediction).resolve() != prediction_path.resolve()
+        ):
+            raise PublicResultsError(f"{track_id} runner points at another prediction artifact")
+        source_artifacts[f"predictions/{track_id}.jsonl"] = _artifact_record(prediction_measured)
+
+        declared_gold = _mapping(inputs.get("gold"), f"{track_id}.inputs.gold")
+        declared_gold_path = declared_gold.get("path")
+        if not isinstance(declared_gold_path, str) or not declared_gold_path:
+            raise PublicResultsError(f"{track_id}.inputs.gold.path is missing")
+        gold_path = Path(declared_gold_path).resolve()
+        if gold_path.name != "gold.jsonl":
+            raise PublicResultsError(f"{track_id} gold input is not gold.jsonl")
+        gold_measured = _verify_declared_artifact(
+            gold_path, declared_gold, f"{track_id}.inputs.gold"
+        )
+        source_artifacts[f"inputs/{track_id}/gold.jsonl"] = _artifact_record(gold_measured)
+
+        coverage = _verify_complete_coverage(track_id, track_run, metrics, prediction_measured)
+        total_pages += int(coverage["selected_pages"])
+        total_failures += int(coverage["runner_failures"]) + int(coverage["api_failures"])
+        public_tracks[track_id] = {
+            "track_id": track_id,
+            "track_version": configuration.get("official_track_version"),
+            "track_fingerprint": track_fingerprint,
+            "evaluation_split": track_run.get("evaluation_split"),
+            "selection_sha256": selection_sha,
+            "reporting_class": expected_class,
+            "synthetic_diagnostic": expected_synthetic,
+            "diagnostic_only": expected_synthetic,
+            "ranked_in_pack": False,
+            "included_in_combined_score": False,
+            "modern_headline_eligible": False,
+            "input_mode": expected_input,
+            "oracle_layout": expected_oracle,
+            "gold_assistance": expected_gold_assistance,
+            "adapter": adapter,
+            "dataset_gold_sha256": gold_measured["sha256"],
+            "run_created_at_utc": manifest.get("created_at_utc"),
+            "coverage_and_failures": coverage,
+            "metrics_file": f"tracks/{track_id}/metrics.json",
+            "metrics_sha256": source_artifacts[
+                f"reports/{track_id}/{declared_artifacts['metrics']['path']}"
+            ]["sha256"],
+        }
+
+    assert common_model is not None
+    assert common_runtime is not None
+    payload = {
+        "schema_version": "1.0",
+        "pack_type": "HebOCRBench compact separate extension and diagnostic result",
+        "result_name": result_name,
+        "benchmark": "HebOCRBench separate extensions and diagnostics",
+        "compact_not_self_contained": True,
+        "verification_boundary": (
+            "Exact aggregate metrics are included separately per track. Raw predictions, "
+            "page-level/error reports, HTML, CSV summaries, run manifests, gold, images, "
+            "and organizer material are omitted. Source artifact attestations can verify "
+            "separately obtained complete-run bytes; this compact pack cannot recompute metrics."
+        ),
+        "reporting_policy": dict(_EXTENSION_REPORTING_POLICY),
+        "pack_ranking_enabled": False,
+        "model": common_model,
+        "runtime": {
+            **common_runtime,
+            "runner_engine": engine,
+            "workers": workers,
+        },
+        "groups": expected_groups,
+        "complete_run_summary": {
+            "track_count": len(public_tracks),
+            "real_extension_track_count": len(_REAL_EXTENSION_TRACKS),
+            "synthetic_diagnostic_track_count": len(_SYNTHETIC_DIAGNOSTIC_TRACKS),
+            "evaluated_items": total_pages,
+            "runner_and_api_failures": total_failures,
+            "all_tracks_complete": True,
+            "combined_score": None,
+            "ranked_in_pack": False,
+            "modern_headline_blending": False,
+        },
+        "tracks": public_tracks,
+        "source_artifact_attestation": {
+            "scope": (
+                "all extension runner, prediction, evaluator report, and hashed gold-input "
+                "artifacts"
+            ),
+            "artifact_count": len(source_artifacts),
+            "artifacts": dict(sorted(source_artifacts.items())),
+        },
+    }
+    _assert_public_value(payload, f"{result_name}.extension_result")
+    write_json(destination / "result.json", payload)
+    return payload
+
+
+def _readme(
+    result_payloads: Mapping[str, Mapping[str, Any]],
+    extension_payloads: Mapping[str, Mapping[str, Any]],
+) -> str:
     rows = []
     for name, payload in sorted(result_payloads.items()):
         model = _mapping(payload["model"], f"{name}.model")
@@ -501,13 +845,36 @@ def _readme(result_payloads: Mapping[str, Mapping[str, Any]]) -> str:
             f"| `{name}` | {model['name']} | `{summary['score_status']}` | "
             f"{summary['evaluated_items']} | {summary['runner_and_api_failures']} |"
         )
+    extension_rows = []
+    for name, payload in sorted(extension_payloads.items()):
+        model = _mapping(payload["model"], f"{name}.model")
+        summary = _mapping(payload["complete_run_summary"], f"{name}.summary")
+        extension_rows.append(
+            f"| `{name}` | {model['name']} | {summary['real_extension_track_count']} | "
+            f"{summary['synthetic_diagnostic_track_count']} | {summary['evaluated_items']} | "
+            f"{summary['runner_and_api_failures']} |"
+        )
+    modern_table = (
+        "| Result | Model | Status | Evaluated items | Runner/API failures |\n"
+        "|---|---|---:|---:|---:|\n" + ("\n".join(rows) if rows else "| _none_ | — | — | — | — |")
+    )
+    extension_table = (
+        "| Result | Model | Real extensions | Synthetic diagnostics | Evaluated items | "
+        "Runner/API failures |\n"
+        "|---|---|---:|---:|---:|---:|\n"
+        + ("\n".join(extension_rows) if extension_rows else "| _none_ | — | — | — | — | — |")
+    )
     return (
         "# HebOCRBench v1.0.0 compact baseline results\n\n"
         "This publication contains exact aggregate `metrics.json` files and exact official "
         "`modern-score.json` files from completed, blind Modern Hebrew baseline runs. Every "
         "source run artifact is bound by SHA-256 and byte size in each `result.json`.\n\n"
-        "| Result | Model | Status | Evaluated items | Runner/API failures |\n"
-        "|---|---|---:|---:|---:|\n" + "\n".join(rows) + "\n\n"
+        + modern_table
+        + "\n\n## Separate extensions and diagnostics\n\n"
+        "Extension metrics are reported per track only. Synthetic diagnostics are not "
+        "rankable, and no extension is blended into the Modern headline or a combined score.\n\n"
+        + extension_table
+        + "\n\n"
         "## Deliberate compactness boundary\n\n"
         "This pack is **not self-contained**. It does not include raw predictions, page-level "
         "records, error details, HTML reports, CSV summaries, run manifests, source images, "
@@ -519,7 +886,9 @@ def _readme(result_payloads: Mapping[str, Mapping[str, Any]]) -> str:
 
 
 def _payload_manifest(
-    root: Path, result_payloads: Mapping[str, Mapping[str, Any]]
+    root: Path,
+    result_payloads: Mapping[str, Mapping[str, Any]],
+    extension_payloads: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Any]:
     artifacts: dict[str, dict[str, object]] = {}
     for path in sorted(root.rglob("*")):
@@ -539,6 +908,22 @@ def _payload_manifest(
         }
         for name, payload in sorted(result_payloads.items())
     }
+    extension_index = {
+        name: {
+            "result_file": f"extension-results/{name}/result.json",
+            "system_id": _mapping(payload["model"], f"{name}.model")["system_id"],
+            "track_count": _mapping(payload["complete_run_summary"], f"{name}.summary")[
+                "track_count"
+            ],
+            "evaluated_items": _mapping(payload["complete_run_summary"], f"{name}.summary")[
+                "evaluated_items"
+            ],
+            "combined_score": None,
+            "ranked_in_pack": False,
+            "modern_headline_blending": False,
+        }
+        for name, payload in sorted(extension_payloads.items())
+    }
     basis: dict[str, Any] = {
         "schema_version": "1.0",
         "pack_type": "HebOCRBench compact public baseline results",
@@ -553,6 +938,7 @@ def _payload_manifest(
             "contains_local_absolute_paths": False,
         },
         "results": result_index,
+        "extension_results": extension_index,
         "payload_artifacts": artifacts,
     }
     encoded = json.dumps(basis, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
@@ -695,6 +1081,203 @@ def verify_public_results_pack(root: str | Path) -> dict[str, Any]:
         if included_paths != expected_included:
             raise PublicResultsError(f"source inclusion attestation is incomplete for {name}")
 
+    extension_results = _mapping(manifest.get("extension_results"), "extension_results")
+    for name, index_value in extension_results.items():
+        if not isinstance(name, str) or not _RESULT_NAME_RE.fullmatch(name):
+            raise PublicResultsError(f"invalid extension result index name: {name!r}")
+        index = _mapping(index_value, f"extension_results.{name}")
+        result_relative = f"extension-results/{name}/result.json"
+        result = _load_mapping(pack_root / result_relative, f"{name} extension result")
+        if (
+            result.get("result_name") != name
+            or result.get("compact_not_self_contained") is not True
+            or result.get("reporting_policy") != _EXTENSION_REPORTING_POLICY
+            or result.get("pack_ranking_enabled") is not False
+        ):
+            raise PublicResultsError(f"invalid compact extension identity for {name}")
+        model = _mapping(result.get("model"), f"extension_results.{name}.model")
+        summary = _mapping(result.get("complete_run_summary"), f"extension_results.{name}.summary")
+        expected_index = {
+            "result_file": result_relative,
+            "system_id": model.get("system_id"),
+            "track_count": summary.get("track_count"),
+            "evaluated_items": summary.get("evaluated_items"),
+            "combined_score": None,
+            "ranked_in_pack": False,
+            "modern_headline_blending": False,
+        }
+        if dict(index) != expected_index:
+            raise PublicResultsError(f"extension result index metadata differs for {name}")
+        expected_summary = {
+            "track_count": 5,
+            "real_extension_track_count": 3,
+            "synthetic_diagnostic_track_count": 2,
+            "runner_and_api_failures": 0,
+            "all_tracks_complete": True,
+            "combined_score": None,
+            "ranked_in_pack": False,
+            "modern_headline_blending": False,
+        }
+        for field, expected in expected_summary.items():
+            if summary.get(field) != expected:
+                raise PublicResultsError(
+                    f"extension result {name} summary {field} must be {expected!r}"
+                )
+        expected_paths.add(result_relative)
+
+        groups = _mapping(result.get("groups"), f"extension_results.{name}.groups")
+        if dict(groups) != {
+            "separate_real_extensions": list(_REAL_EXTENSION_TRACKS),
+            "synthetic_diagnostics": list(_SYNTHETIC_DIAGNOSTIC_TRACKS),
+        }:
+            raise PublicResultsError(f"extension result groups differ for {name}")
+        tracks = _mapping(result.get("tracks"), f"extension_results.{name}.tracks")
+        if set(tracks) != set(_ALL_EXTENSION_TRACKS):
+            raise PublicResultsError(f"extension result lacks canonical tracks for {name}")
+        included_metric_paths: set[str] = set()
+        evaluated_items = 0
+        for track_id, track_value in tracks.items():
+            track = _mapping(track_value, f"extension_results.{name}.tracks.{track_id}")
+            expected_synthetic = track_id in _SYNTHETIC_DIAGNOSTIC_TRACKS
+            expected_class = (
+                "synthetic_diagnostic" if expected_synthetic else "separate_real_extension"
+            )
+            expected_flags = {
+                "reporting_class": expected_class,
+                "synthetic_diagnostic": expected_synthetic,
+                "diagnostic_only": expected_synthetic,
+                "ranked_in_pack": False,
+                "included_in_combined_score": False,
+                "modern_headline_eligible": False,
+            }
+            for field, expected in expected_flags.items():
+                if track.get(field) != expected:
+                    raise PublicResultsError(
+                        f"extension result {name}/{track_id} {field} must be {expected!r}"
+                    )
+            runtime = _mapping(result.get("runtime"), f"extension_results.{name}.runtime")
+            expected_input, expected_oracle, expected_gold = _extension_track_contract(
+                track_id, runtime.get("runner_engine")
+            )
+            if (
+                track.get("input_mode") != expected_input
+                or track.get("oracle_layout") is not expected_oracle
+                or track.get("gold_assistance") is not expected_gold
+            ):
+                raise PublicResultsError(
+                    f"extension result input/oracle contract differs for {name}/{track_id}"
+                )
+            metrics_file = track.get("metrics_file")
+            expected_metrics = f"tracks/{track_id}/metrics.json"
+            if metrics_file != expected_metrics:
+                raise PublicResultsError(f"extension metrics path differs for {name}/{track_id}")
+            metrics_relative = f"extension-results/{name}/{expected_metrics}"
+            if _measure_file(pack_root / metrics_relative)["sha256"] != track.get("metrics_sha256"):
+                raise PublicResultsError(f"extension metrics hash differs for {name}/{track_id}")
+            expected_paths.add(metrics_relative)
+            included_metric_paths.add(metrics_relative)
+            coverage = _mapping(
+                track.get("coverage_and_failures"),
+                f"extension_results.{name}.{track_id}.coverage",
+            )
+            if coverage.get("complete") is not True:
+                raise PublicResultsError(f"extension coverage is incomplete for {name}/{track_id}")
+            for failure_field in (
+                "missing_prediction_pages",
+                "extra_prediction_pages",
+                "runner_failures",
+                "api_failures",
+                "operational_api_failures",
+            ):
+                if coverage.get(failure_field) != 0:
+                    raise PublicResultsError(
+                        f"extension coverage has {failure_field} for {name}/{track_id}"
+                    )
+            evaluated_items += _integer(
+                coverage.get("evaluated_pages"),
+                f"extension_results.{name}.{track_id}.evaluated_pages",
+            )
+        if summary.get("evaluated_items") != evaluated_items:
+            raise PublicResultsError(f"extension evaluated item total differs for {name}")
+
+        attestation = _mapping(
+            result.get("source_artifact_attestation"),
+            f"extension_results.{name}.source_artifact_attestation",
+        )
+        source_artifacts = _mapping(
+            attestation.get("artifacts"), f"extension_results.{name}.source_artifacts"
+        )
+        if attestation.get("artifact_count") != len(source_artifacts):
+            raise PublicResultsError(f"extension source artifact count differs for {name}")
+        expected_source_artifacts = {"separate-baseline-run.json"}
+        for track_id in tracks:
+            expected_source_artifacts.update(
+                {
+                    f"inputs/{track_id}/gold.jsonl",
+                    f"predictions/{track_id}.jsonl",
+                    f"reports/{track_id}/errors.jsonl",
+                    f"reports/{track_id}/metrics.json",
+                    f"reports/{track_id}/per_page.jsonl",
+                    f"reports/{track_id}/report.html",
+                    f"reports/{track_id}/run_manifest.json",
+                    f"reports/{track_id}/summary.csv",
+                }
+            )
+        if set(source_artifacts) != expected_source_artifacts:
+            raise PublicResultsError(f"extension source artifact set differs for {name}")
+        for track_id, track_value in tracks.items():
+            track = _mapping(track_value, f"extension_results.{name}.tracks.{track_id}")
+            gold_attestation = _mapping(
+                source_artifacts[f"inputs/{track_id}/gold.jsonl"],
+                f"extension_results.{name}.gold.{track_id}",
+            )
+            metrics_attestation = _mapping(
+                source_artifacts[f"reports/{track_id}/metrics.json"],
+                f"extension_results.{name}.metrics.{track_id}",
+            )
+            if gold_attestation.get("sha256") != track.get("dataset_gold_sha256"):
+                raise PublicResultsError(
+                    f"extension gold attestation differs for {name}/{track_id}"
+                )
+            if metrics_attestation.get("sha256") != track.get("metrics_sha256"):
+                raise PublicResultsError(
+                    f"extension metrics attestation differs for {name}/{track_id}"
+                )
+        included_paths: set[str] = set()
+        for logical_path, artifact_value in source_artifacts.items():
+            if not isinstance(logical_path, str) or Path(logical_path).is_absolute():
+                raise PublicResultsError(f"unsafe extension source artifact path for {name}")
+            artifact = _mapping(
+                artifact_value, f"extension_results.{name}.source_artifacts.{logical_path}"
+            )
+            _assert_sha256(artifact.get("sha256"), f"{name}.{logical_path}.sha256")
+            _integer(artifact.get("size_bytes"), f"{name}.{logical_path}.size_bytes")
+            included = artifact.get("included_in_compact_pack")
+            if included not in {True, False}:
+                raise PublicResultsError(
+                    f"invalid extension inclusion flag for {name}/{logical_path}"
+                )
+            if included:
+                included_as = artifact.get("included_as")
+                if not isinstance(included_as, str) or included_as not in declared_payload:
+                    raise PublicResultsError(
+                        f"included extension source artifact is absent for {name}"
+                    )
+                declaration = _mapping(declared_payload[included_as], included_as)
+                if declaration.get("sha256") != artifact.get("sha256"):
+                    raise PublicResultsError(
+                        f"included extension source artifact hash differs for {name}"
+                    )
+                included_paths.add(included_as)
+            elif "included_as" in artifact:
+                raise PublicResultsError(
+                    f"omitted extension source artifact has a public path for {name}"
+                )
+        if included_paths != included_metric_paths:
+            raise PublicResultsError(
+                f"extension source inclusion attestation is incomplete for {name}"
+            )
+
     if actual_paths != expected_paths:
         raise PublicResultsError("public pack contains an unexpected payload file type")
     _assert_public_value(manifest, "PACK-MANIFEST")
@@ -710,12 +1293,13 @@ def build_public_results_pack(
     runs: Mapping[str, str | Path],
     output: str | Path,
     *,
+    extension_runs: Mapping[str, str | Path] | None = None,
     clean: bool = False,
 ) -> dict[str, Any]:
-    """Verify completed Modern baseline runs and build a deterministic compact pack."""
+    """Verify Modern/extension baseline runs and build a deterministic compact pack."""
 
-    if not runs:
-        raise PublicResultsError("at least one named baseline run is required")
+    if not runs and not extension_runs:
+        raise PublicResultsError("at least one named baseline or extension run is required")
     normalized_runs: dict[str, Path] = {}
     for name, path in runs.items():
         if not _RESULT_NAME_RE.fullmatch(name):
@@ -727,6 +1311,17 @@ def build_public_results_pack(
             raise PublicResultsError(f"baseline run directory does not exist: {source}")
         normalized_runs[name] = source
 
+    normalized_extension_runs: dict[str, Path] = {}
+    for name, path in (extension_runs or {}).items():
+        if not _RESULT_NAME_RE.fullmatch(name):
+            raise PublicResultsError(f"invalid extension result name: {name!r}")
+        if name in normalized_extension_runs:
+            raise PublicResultsError(f"duplicate extension result name: {name}")
+        source = Path(path).resolve()
+        if not source.is_dir():
+            raise PublicResultsError(f"extension run directory does not exist: {source}")
+        normalized_extension_runs[name] = source
+
     destination = Path(output).resolve()
     for name, source in normalized_runs.items():
         if (
@@ -735,6 +1330,13 @@ def build_public_results_pack(
             or source.is_relative_to(destination)
         ):
             raise PublicResultsError(f"output must not overlap source run {name}")
+    for name, source in normalized_extension_runs.items():
+        if (
+            destination == source
+            or destination.is_relative_to(source)
+            or source.is_relative_to(destination)
+        ):
+            raise PublicResultsError(f"output must not overlap extension source run {name}")
     if destination.exists():
         if not destination.is_dir():
             raise PublicResultsError("output exists and is not a directory")
@@ -747,8 +1349,15 @@ def build_public_results_pack(
         results: dict[str, dict[str, Any]] = {}
         for name, source in sorted(normalized_runs.items()):
             results[name] = _build_result(source, staging / "results" / name, name)
-        (staging / "README.md").write_text(_readme(results), encoding="utf-8", newline="\n")
-        manifest = _payload_manifest(staging, results)
+        extension_results: dict[str, dict[str, Any]] = {}
+        for name, source in sorted(normalized_extension_runs.items()):
+            extension_results[name] = _build_extension_result(
+                source, staging / "extension-results" / name, name
+            )
+        (staging / "README.md").write_text(
+            _readme(results, extension_results), encoding="utf-8", newline="\n"
+        )
+        manifest = _payload_manifest(staging, results, extension_results)
         _assert_public_value(manifest, "PACK-MANIFEST")
         write_json(staging / "PACK-MANIFEST.json", manifest)
         verify_public_results_pack(staging)
