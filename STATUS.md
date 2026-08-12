@@ -65,13 +65,23 @@ synthetic diagnostic remains outside every ranking and headline.
   separately reported extension/diagnostic roots with zero inference or API
   failures. Its Modern result is `non_conformant`, with no headline score,
   because mandatory BiDi gates failed.
+- The complete Surya OCR 2 baseline finished all 34,267 Modern inputs with zero
+  inference or API failures. Artifact hashes, component roots, full coverage,
+  blind inputs and recomputed metrics were independently verified. Its Modern
+  result is also `non_conformant`, with no headline score, because mandatory
+  BiDi gates failed.
+- Exact aggregate metrics and score files for both complete Modern runs are
+  public on [Hugging Face at tag
+  `v1.0.0`](https://huggingface.co/datasets/ssdataanalysis/hebocrbench-v1-results/tree/v1.0.0).
+  The compact results pack fingerprint is
+  `3d8438ed0224e583146343b0193d026ff266354461aef11614af22277c91be84`;
+  raw predictions, gold, images, organizer maps and key material are omitted.
 - The deterministic local v1 release archive was built and passed the final
   archive verifier. Public GitHub release assets still wait on the gates below.
 
 ## Publication gates still pending
 
-- complete the full official Surya run and recompute its fingerprint-bound
-  reports and guarded Modern score status;
+- complete and verify Surya's separately reported extension/diagnostic runs;
 - publish the minimal five-file public source mirror, pin its exact 40-character
   revision in the release workflow, and obtain a green
   `modern-v1-release.yml` run;
