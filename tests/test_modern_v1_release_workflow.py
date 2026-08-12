@@ -90,21 +90,47 @@ def test_modern_v1_release_pins_and_probes_the_pdf_extraction_runtime():
     env = payload["env"]
     assert isinstance(env, dict)
     assert env["PYTHON_VERSION"] == "3.12.13"
+    assert env["PYTHON_RUNTIME_URL"] == (
+        "https://github.com/astral-sh/python-build-standalone/releases/download/"
+        "20260303/cpython-3.12.13%2B20260303-aarch64-apple-darwin-"
+        "install_only_stripped.tar.gz"
+    )
+    assert env["PYTHON_RUNTIME_SHA256"] == (
+        "377234f346fce41b6d3112b5ead89cb6af2d5596244f9edc1a739065770dde1f"
+    )
+    assert env["PYTHON_RUNTIME_SIZE"] == "17665685"
 
     jobs = payload["jobs"]
     assert isinstance(jobs, dict)
     build = jobs["build"]
     assert isinstance(build, dict)
+    assert build["runs-on"] == "macos-26"
     steps = {
         step["name"]: step
         for step in build["steps"]
         if isinstance(step, dict) and isinstance(step.get("name"), str)
     }
+    python_setup = _step_command(payload, "Install the exact canonical Python runtime")
+    assert "actions/setup-python" not in str(steps["Install the exact canonical Python runtime"])
+    for value in (
+        "stat -f '%z'",
+        "shasum -a 256 --check --strict",
+        'platform.python_version() == "3.12.13"',
+        "3.12.13 (main, Mar  3 2026, 15:35:03) [Clang 21.1.4 ]",
+        'sysconfig.get_config_var("HOST_GNU_TYPE") == "aarch64-apple-darwin"',
+        "eb9d74b9c7cfdfb2c9b91614edb2c3607360ba46c5aa7fc4557b3a4a23e97cff",
+        "0d755ba198b32fa06bea90d801ec33a4a83961e55839b16a8e322dc23ed74e48",
+        "39ecccd16d25f60793675a79ec545ba50bdd10bd4c13f756ee9a50ab485cc6ee",
+        'ssl.OPENSSL_VERSION == "OpenSSL 3.5.5 27 Jan 2026"',
+        'pip.__version__ == "26.0.1"',
+        '>> "$GITHUB_PATH"',
+    ):
+        assert value in python_setup
     setup = steps["Set up the pinned Poppler text extractor"]
     assert setup["uses"] == ("mamba-org/setup-micromamba@f457c30a868e4760d3a6fcea5f25dc655b8edf39")
     assert setup["with"]["micromamba-version"] == "2.3.2-0"
     assert setup["with"]["environment-name"] == "hebocrbench-poppler"
-    assert "poppler=26.07.0=he594abd_3" in setup["with"]["create-args"]
+    assert "poppler=26.07.0=h4cfec15_3" in setup["with"]["create-args"]
     assert setup["with"]["init-shell"] == "none"
 
     expose = _step_command(payload, "Expose and verify the pinned Poppler executable")
@@ -112,6 +138,27 @@ def test_modern_v1_release_pins_and_probes_the_pdf_extraction_runtime():
     assert '>> "$GITHUB_PATH"' in expose
     install = _step_command(payload, "Install the deterministic extraction stack")
     assert "poppler-utils" not in install
+    assert "apt-get" not in install
+    assert "brew install libraqm jpeg-turbo libtiff openjpeg" in install
+    assert "test -x /usr/bin/ar" in install
+    assert "--no-cache-dir" in install
+    assert "--no-binary Pillow" in install
+    assert "export AR=/usr/bin/ar" in install
+    assert "export ARFLAGS=rcs" in install
+    for value in (
+        'assert platform.system() == "Darwin"',
+        'assert platform.machine() == "arm64"',
+        'features.version("raqm") == "0.11.0"',
+        'features.version("freetype2") == "2.14.3"',
+        'features.version("jpg") == "8.0"',
+        'features.version("jpg_2000") == "2.5.4"',
+        'features.version("libtiff") == "4.7.2"',
+        '"harfbuzz 14.3.0"',
+        '"jpeg-turbo 3.2.0"',
+        '"libtiff 4.7.2"',
+        '"openjpeg 2.5.4"',
+    ):
+        assert value in install
     assert 'test "$(pdftotext -v 2>&1 | head -n 1)" = "pdftotext version 26.07.0"' in install
 
     probe = _step_command(payload, "Verify the canonical PDF extraction contract")
@@ -120,6 +167,8 @@ def test_modern_v1_release_pins_and_probes_the_pdf_extraction_runtime():
         "6c584719459959d456ad8efce4373960fc99f75767018eec5139e9ed7b7a20c3",
         "f487d38f6be4dfc46d324cf8d534c31030a5ab69eb337fb634bc7b6bf3d12d25",
         "5f0f489a303487bc96699261228c662f4e2569d37f2a67591dc1aeb902308d07",
+        "df30e112805ae5fd61035d28e7938c0344087b4694bd646146ac84df3aad271f",
+        "365988",
         "0.9829351535836177",
         "0.9715698393077874",
         "minimum=0.98",
@@ -218,7 +267,8 @@ def test_release_workflow_prepopulates_exact_pinned_public_source_mirror():
         ),
     }
     assert mirror.count("download_locked \\") == 5
-    assert mirror.count("install -D -m 0644 \\") == 6
+    assert "install -D" not in mirror
+    assert "shutil.copyfile" in mirror
     for path, (size, sha256) in expected.items():
         assert path in mirror
         assert size in mirror
@@ -234,6 +284,57 @@ def test_release_workflow_prepopulates_exact_pinned_public_source_mirror():
     }
     for expectation in expected_hits:
         assert expectation in fetch
+
+
+def test_release_workflow_reconstructs_canonical_source_metadata_and_fingerprints():
+    payload, text = _workflow()
+    fetch = _step_command(payload, "Fetch and verify all locked extension and diagnostic sources")
+    build = _step_command(payload, "Build freeze and certify all extension and diagnostic roots")
+    parent = _step_command(payload, "Build the two canonical parent roots")
+    derived = _step_command(payload, "Derive and certify the four evaluation-only roots")
+    proof = _step_command(payload, "Write non-redistributive certification proof bundle")
+
+    assert 'verify_report="$RUNNER_TEMP/extension-source-verify.json"' in fetch
+    assert '"$RUNNER_TEMP/acquisition-evidence"' in fetch
+    assert '"$RUNNER_TEMP/canonical-extension-sources"' in fetch
+    assert "os.link(source, destination)" in fetch
+    assert 'canonical.rglob(".hebocrbench-source.json")' in fetch
+    assert 'markers / f"{source_id}.json"' in fetch
+    assert 'cp -R "$RUNNER_TEMP/acquisition-evidence" "$proof/"' in proof
+
+    canonical_sources = {
+        "modern-handwriting-lines-v1",
+        "historical-pinkas-handwriting-v1",
+        "biblical-niqqud-synthetic-diagnostic-v1",
+        "rashi-print-synthetic-diagnostic-v1",
+    }
+    for source_id in canonical_sources:
+        assert f'--source-root "{source_id}=$canonical/{source_id}"' in build
+    assert build.count("--profile-scope full") == 4
+    assert build.count("--profile-scope track-component") == 1
+    assert (
+        '--source-root "historical-hebrew-press-mixed-v1='
+        "$cache/historical-hebrew-press-mixed-v1/"
+        'locked-omilab-hazefira-page-alto-zip.extracted"'
+    ) in build
+
+    expected_fingerprints = {
+        "51f11870b20aa2a0a9f789391ab9ea97b897a62207c23cc73a064c0e5809c756",
+        "c071a31d87630e5f6dfba15886dbf934c55379fa3e0f9ed22924f938231bee62",
+        "e8c56278525c00e3532d0c8445469af4ddb431257f7cc613ef3e3be45366233d",
+        "99da38cde7317555806301e3fda9572ac0628bbde06eceb37cc07070296fd261",
+        "cf801f22cb848295d36021e1f43e721da4366c51b3ba4264744fb6d1fa5e16b4",
+        "d0145c7e63faf72a605991edebfd5a3010e436e73f145d51124af4beb6d37e31",
+        "9b0ee1b4c8c230c4b012906cdd3d344e9f25a1325058ed5849fafe579e46767b",
+        "fb687ec4a77c54db10f6aadb0bc982eceeb71c28083cddd566d6a2d6ba4dcb9d",
+        "16aed8a8fc31ae1aaf957fe973b2b1dbdd0f911156f7539a78ceaafe56240143",
+        "4c6ecba0b4487213fa95a1a7833fa546e41e2664b91fd9700f915c5c686e38fb",
+        "c9e2732ab5ca0467635ae386c84b5d98045973641091887eedf0fd5cbba937a5",
+    }
+    combined = "\n".join((parent, derived, build))
+    for fingerprint in expected_fingerprints:
+        assert fingerprint in combined
+    assert "c861f4eb8e9694fde099f86822068f6982ff7d6c04abb69c7033317ab639d628" not in text
 
 
 def test_full_suite_build_verify_and_release_are_bound_to_all_ten_roots():
