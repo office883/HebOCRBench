@@ -139,6 +139,15 @@ def test_modern_v1_release_pins_and_probes_the_pdf_extraction_runtime():
     install = _step_command(payload, "Install the deterministic extraction stack")
     assert "poppler-utils" not in install
     assert "apt-get" not in install
+    assert "brew update" in install
+    assert "export HOMEBREW_NO_AUTO_UPDATE=1" in install
+    assert "https://formulae.brew.sh/api/formula/harfbuzz.json" in install
+    assert 'payload["versions"]["stable"] == "14.3.0"' in install
+    assert "a4d727f73af8892743817d9557e139866060de41302e1e6461908e9d31e2aa0a" in install
+    assert "188aea0a97665d3a2a39ed72b37b249252f25ae92f84e4c9d4054f004b27f936" in install
+    assert "brew fetch --force --bottle-tag=arm64_tahoe harfbuzz" in install
+    assert "brew --cache --bottle-tag=arm64_tahoe harfbuzz" in install
+    assert "brew upgrade harfbuzz" in install
     assert "brew install libraqm jpeg-turbo libtiff openjpeg" in install
     assert "test -x /usr/bin/ar" in install
     assert "--no-cache-dir" in install
