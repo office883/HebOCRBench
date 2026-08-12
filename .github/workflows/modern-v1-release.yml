@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PYTHON_VERSION: '3.12'
+  PYTHON_VERSION: '3.12.13'
   SHARD_COUNT: '8'
   SELECTION_SHA256: 4c0ebc58784d565f225b8a412ffa93146df4c417de479464f1d9f283ecf7af52
   EFFECTIVE_SELECTION_SHA256: a68d2b1fd1beda4e68b2d426b137abfc393611fcaefcacde7726932174915acd
@@ -102,12 +102,40 @@ jobs:
             pyproject.toml
             .github/modern-v1-build-constraints.txt
 
+      - name: Set up the pinned Poppler text extractor
+        id: poppler
+        uses: mamba-org/setup-micromamba@f457c30a868e4760d3a6fcea5f25dc655b8edf39 # v3
+        with:
+          micromamba-version: '2.3.2-0'
+          micromamba-root-path: ${{ runner.temp }}/micromamba
+          micromamba-binary-path: ${{ runner.temp }}/bin/micromamba
+          environment-name: hebocrbench-poppler
+          create-args: >-
+            -c conda-forge
+            poppler=26.07.0=he594abd_3
+          init-shell: none
+          cache-downloads: false
+          cache-environment: false
+          post-cleanup: all
+
+      - name: Expose and verify the pinned Poppler executable
+        env:
+          POPPLER_ENVIRONMENT: ${{ steps.poppler.outputs.environment-path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x "$POPPLER_ENVIRONMENT/bin/pdftotext"
+          version="$($POPPLER_ENVIRONMENT/bin/pdftotext -v 2>&1 | head -n 1)"
+          test "$version" = "pdftotext version 26.07.0"
+          printf '%s\n' "$POPPLER_ENVIRONMENT/bin" >> "$GITHUB_PATH"
+
       - name: Install the deterministic extraction stack
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends curl libraqm0 poppler-utils
+          sudo apt-get install --yes --no-install-recommends curl libraqm0
+          test "$(pdftotext -v 2>&1 | head -n 1)" = "pdftotext version 26.07.0"
           python -m pip install \
             --requirement .github/modern-v1-build-constraints.txt
           python - <<'PY'
@@ -205,6 +233,62 @@ jobs:
           assert replacement_lock["parent_selection_sha256"] == os.environ["SELECTION_SHA256"]
           assert marker["verification_status"] == "verified"
           assert marker["source_version"] == "2026-07-26-v1"
+          PY
+
+      - name: Verify the canonical PDF extraction contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$RUNNER_TEMP/sources/modern-public-documents-v1" <<'PY'
+          import hashlib
+          import math
+          from pathlib import Path
+          import sys
+
+          import fitz
+
+          from hebocrbench.converters import modern_pdf
+          from hebocrbench.converters import _modern_pdf_engine as engine
+
+          root = Path(sys.argv[1])
+          pdf = root / "pdfs/knesset-bill-12458079.pdf"
+          assert hashlib.sha256(pdf.read_bytes()).hexdigest() == (
+              "6c584719459959d456ad8efce4373960fc99f75767018eec5139e9ed7b7a20c3"
+          )
+          poppler_text = engine._pdftotext_layout(pdf, 26)
+          assert hashlib.sha256(poppler_text.encode("utf-8")).hexdigest() == (
+              "f487d38f6be4dfc46d324cf8d534c31030a5ab69eb337fb634bc7b6bf3d12d25"
+          )
+          assert len(engine._comparison_tokens(poppler_text)) == 539
+
+          document = fitz.open(pdf)
+          try:
+              _, pymupdf_text = engine._extract_regions(document[25], 200 / 72)
+          finally:
+              document.close()
+          assert hashlib.sha256(pymupdf_text.encode("utf-8")).hexdigest() == (
+              "5f0f489a303487bc96699261228c662f4e2569d37f2a67591dc1aeb902308d07"
+          )
+          assert len(engine._comparison_tokens(pymupdf_text)) == 547
+          components = engine._agreement_components(pymupdf_text, poppler_text)
+          expected = {
+              "anchor_content": 0.9829351535836177,
+              "anchor_order": 0.9728506787330317,
+              "critical_content": 1.0,
+              "local_order": 0.9715698393077874,
+              "punctuation_content": 0.9855072463768115,
+          }
+          for key, value in expected.items():
+              assert math.isclose(components[key], value, rel_tol=0.0, abs_tol=1e-15), (
+                  key,
+                  components[key],
+                  value,
+              )
+          assert modern_pdf.text_layer_agreement(
+              pymupdf_text,
+              poppler_text,
+              minimum=0.98,
+          ) == expected["anchor_content"]
           PY
 
       - name: Prepopulate locked extension sources from pinned public mirror
