@@ -77,14 +77,19 @@ synthetic diagnostic remains outside every ranking and headline.
   The compact results pack fingerprint is
   `1e67e1f92c899029f13e8a69387aa0561ada503fea32889eb0c105d57d2a6301`;
   raw predictions, gold, images, organizer maps and key material are omitted.
-- A deterministic local v1 release candidate was built and passed the archive
-  verifier. The final archive will be rebuilt from the merged release commit.
+- The five-artifact public release-source mirror is published and pinned at
+  [revision
+  `3d6dcbfedeeeb1234db84131abc92272abff0625`](https://huggingface.co/datasets/ssdataanalysis/hebocrbench-v1-sources/tree/3d6dcbfedeeeb1234db84131abc92272abff0625).
+  The release workflow verifies the exact sizes and SHA-256 values before
+  prepopulating six registry cache targets; HaZefira remains fetched from its
+  locked original source.
+- A deterministic local v1 release candidate was rebuilt twice byte-identically
+  from the last merged commit and passed all 48 archive-verifier checks. Final
+  attachment bytes will be rebuilt from the tagged release commit.
 
 ## Publication gates still pending
 
-- publish the minimal five-file public source mirror, pin its exact 40-character
-  revision in the release workflow, and obtain a green
-  `modern-v1-release.yml` run;
+- obtain a green, source-mirror-pinned `modern-v1-release.yml` run;
 - create the GitHub `v1.0.0` tag and release after the two independent
   baselines and release workflow are complete. The Hugging Face participant-pack
   tag `v1.0.0` is already public.

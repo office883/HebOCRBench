@@ -25,6 +25,8 @@ env:
   PROFILES_FINGERPRINT: a84ada5741ec4d314075775493bc5d57cc5ec271d3d9d495b199a4b9498da173
   MODERN_SUITE_FINGERPRINT: c68250ec4320485e243171b7d3f86c9b3b526f8ada317eda592cd7289f4df5ea
   FULL_SUITE_FINGERPRINT: 6d2b847121d307b225ec7e785ded7060f40da20b1d8dee28982ef7da06e032d4
+  SOURCE_MIRROR_REPOSITORY: ssdataanalysis/hebocrbench-v1-sources
+  SOURCE_MIRROR_REVISION: '3d6dcbfedeeeb1234db84131abc92272abff0625'
   PIP_DISABLE_PIP_VERSION_CHECK: '1'
 
 jobs:
@@ -205,11 +207,175 @@ jobs:
           assert marker["source_version"] == "2026-07-26-v1"
           PY
 
+      - name: Prepopulate locked extension sources from pinned public mirror
+        shell: bash
+        run: |
+          set -euo pipefail
+          mirror="$RUNNER_TEMP/source-mirror"
+          cache="$RUNNER_TEMP/extension-sources"
+          test ! -e "$mirror"
+          test ! -e "$cache"
+          test "$SOURCE_MIRROR_REPOSITORY" = "ssdataanalysis/hebocrbench-v1-sources"
+          [[ "$SOURCE_MIRROR_REVISION" =~ ^[0-9a-f]{40}$ ]]
+          mkdir -p "$mirror" "$cache"
+
+          download_locked() {
+            local relative_path="$1"
+            local expected_size="$2"
+            local expected_sha256="$3"
+            local destination="$mirror/$relative_path"
+            mkdir -p "$(dirname "$destination")"
+            curl --fail --location --silent --show-error \
+              --proto '=https' --proto-redir '=https' \
+              "https://huggingface.co/datasets/$SOURCE_MIRROR_REPOSITORY/resolve/$SOURCE_MIRROR_REVISION/$relative_path?download=true" \
+              --output "$destination.part"
+            test "$(stat --format='%s' "$destination.part")" -eq "$expected_size"
+            printf '%s  %s\n' "$expected_sha256" "$destination.part" \
+              | sha256sum --check --strict
+            mv "$destination.part" "$destination"
+          }
+
+          download_locked \
+            foundation/test-synthetic-mixed-000.tar \
+            64563200 \
+            12886b77eefb54f73ed2ea9ba9ddf4766de60ed2635126248344739626608927
+          download_locked \
+            foundation/train-niqqud-000.tar \
+            318689280 \
+            05cd60b91ce566b23dd7024665026a615f2127b7abfaf8e8a10afd92d3945ff4
+          download_locked \
+            foundation/train-rashi-000.tar \
+            118077440 \
+            f1adca1ba117160266325b2002abe62896f06986242ef145a34296852f7190ee
+          download_locked \
+            htr/stage3_human_finetune/test-00000.parquet \
+            18939757 \
+            19823993891409e7fc90cac38230822cb88dd2010955a53d4618bfbc226f7d45
+          download_locked \
+            pinkas/historical-pinkas-handwriting-test-v1.tar \
+            418498560 \
+            d986a3527d1ddae19cf2f09f3ff5e84458eeb5e1f6f9cb4e2a48d895dfcd5eb6
+
+          python - "$mirror" <<'PY'
+          import hashlib
+          from pathlib import Path
+          import sys
+
+          root = Path(sys.argv[1])
+          expected = {
+              "foundation/test-synthetic-mixed-000.tar": (
+                  64563200,
+                  "12886b77eefb54f73ed2ea9ba9ddf4766de60ed2635126248344739626608927",
+              ),
+              "foundation/train-niqqud-000.tar": (
+                  318689280,
+                  "05cd60b91ce566b23dd7024665026a615f2127b7abfaf8e8a10afd92d3945ff4",
+              ),
+              "foundation/train-rashi-000.tar": (
+                  118077440,
+                  "f1adca1ba117160266325b2002abe62896f06986242ef145a34296852f7190ee",
+              ),
+              "htr/stage3_human_finetune/test-00000.parquet": (
+                  18939757,
+                  "19823993891409e7fc90cac38230822cb88dd2010955a53d4618bfbc226f7d45",
+              ),
+              "pinkas/historical-pinkas-handwriting-test-v1.tar": (
+                  418498560,
+                  "d986a3527d1ddae19cf2f09f3ff5e84458eeb5e1f6f9cb4e2a48d895dfcd5eb6",
+              ),
+          }
+          actual = {
+              path.relative_to(root).as_posix()
+              for path in root.rglob("*")
+              if path.is_file()
+          }
+          assert actual == set(expected), (actual, set(expected))
+          assert not any(path.is_symlink() for path in root.rglob("*"))
+          for relative, (size, expected_sha256) in expected.items():
+              path = root / relative
+              digest = hashlib.sha256()
+              with path.open("rb") as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              assert path.stat().st_size == size, relative
+              assert digest.hexdigest() == expected_sha256, relative
+          PY
+
+          install -D -m 0644 \
+            "$mirror/htr/stage3_human_finetune/test-00000.parquet" \
+            "$cache/modern-handwriting-lines-v1/stage3_human_finetune/test-00000.parquet"
+          install -D -m 0644 \
+            "$mirror/pinkas/historical-pinkas-handwriting-test-v1.tar" \
+            "$cache/historical-pinkas-handwriting-v1/historical-pinkas-handwriting-test-v1.tar"
+          install -D -m 0644 \
+            "$mirror/foundation/test-synthetic-mixed-000.tar" \
+            "$cache/biblical-niqqud-synthetic-diagnostic-v1/test-synthetic-mixed-000.tar"
+          install -D -m 0644 \
+            "$mirror/foundation/train-niqqud-000.tar" \
+            "$cache/biblical-niqqud-synthetic-diagnostic-v1/train-niqqud-000.tar"
+          install -D -m 0644 \
+            "$mirror/foundation/test-synthetic-mixed-000.tar" \
+            "$cache/rashi-print-synthetic-diagnostic-v1/test-synthetic-mixed-000.tar"
+          install -D -m 0644 \
+            "$mirror/foundation/train-rashi-000.tar" \
+            "$cache/rashi-print-synthetic-diagnostic-v1/train-rashi-000.tar"
+
+          python - "$cache" <<'PY'
+          import hashlib
+          from pathlib import Path
+          import sys
+
+          root = Path(sys.argv[1])
+          expected = {
+              "modern-handwriting-lines-v1/stage3_human_finetune/test-00000.parquet": (
+                  18939757,
+                  "19823993891409e7fc90cac38230822cb88dd2010955a53d4618bfbc226f7d45",
+              ),
+              "historical-pinkas-handwriting-v1/historical-pinkas-handwriting-test-v1.tar": (
+                  418498560,
+                  "d986a3527d1ddae19cf2f09f3ff5e84458eeb5e1f6f9cb4e2a48d895dfcd5eb6",
+              ),
+              "biblical-niqqud-synthetic-diagnostic-v1/test-synthetic-mixed-000.tar": (
+                  64563200,
+                  "12886b77eefb54f73ed2ea9ba9ddf4766de60ed2635126248344739626608927",
+              ),
+              "biblical-niqqud-synthetic-diagnostic-v1/train-niqqud-000.tar": (
+                  318689280,
+                  "05cd60b91ce566b23dd7024665026a615f2127b7abfaf8e8a10afd92d3945ff4",
+              ),
+              "rashi-print-synthetic-diagnostic-v1/test-synthetic-mixed-000.tar": (
+                  64563200,
+                  "12886b77eefb54f73ed2ea9ba9ddf4766de60ed2635126248344739626608927",
+              ),
+              "rashi-print-synthetic-diagnostic-v1/train-rashi-000.tar": (
+                  118077440,
+                  "f1adca1ba117160266325b2002abe62896f06986242ef145a34296852f7190ee",
+              ),
+          }
+          actual = {
+              path.relative_to(root).as_posix()
+              for path in root.rglob("*")
+              if path.is_file()
+          }
+          assert actual == set(expected), (actual, set(expected))
+          assert not any(path.is_symlink() for path in root.rglob("*"))
+          assert not list(root.rglob(".hebocrbench-source.json"))
+          for relative, (size, expected_sha256) in expected.items():
+              path = root / relative
+              digest = hashlib.sha256()
+              with path.open("rb") as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              assert path.stat().st_size == size, relative
+              assert digest.hexdigest() == expected_sha256, relative
+          PY
+
       - name: Fetch and verify all locked extension and diagnostic sources
         shell: bash
         run: |
           set -euo pipefail
           cache="$RUNNER_TEMP/extension-sources"
+          fetch_report="$RUNNER_TEMP/extension-source-fetch.json"
           python -m hebocrbench data fetch \
             --registry corpora/registry.yaml \
             --source modern-handwriting-lines-v1 \
@@ -218,7 +384,37 @@ jobs:
             --source biblical-niqqud-synthetic-diagnostic-v1 \
             --source rashi-print-synthetic-diagnostic-v1 \
             --cache "$cache" \
-            --extract
+            --extract > "$fetch_report"
+          python - "$fetch_report" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert set(payload) == {"sources"}
+          by_source = {item["source_id"]: item for item in payload["sources"]}
+          expected = {
+              "modern-handwriting-lines-v1": (1, 0),
+              "historical-pinkas-handwriting-v1": (1, 0),
+              "biblical-niqqud-synthetic-diagnostic-v1": (2, 0),
+              "rashi-print-synthetic-diagnostic-v1": (2, 0),
+              "historical-hebrew-press-mixed-v1": (0, 1),
+          }
+          assert set(by_source) == set(expected), (set(by_source), set(expected))
+          for source_id, (cache_hits, downloads) in expected.items():
+              source = by_source[source_id]
+              artifacts = source["artifacts"]
+              assert source["cache_hit_count"] == cache_hits, source_id
+              assert source["downloaded_count"] == downloads, source_id
+              assert len(artifacts) == cache_hits + downloads, source_id
+              assert sum(item["from_cache"] is True for item in artifacts) == cache_hits
+              assert sum(item["from_cache"] is False for item in artifacts) == downloads
+          press = by_source["historical-hebrew-press-mixed-v1"]
+          assert [item["artifact_id"] for item in press["artifacts"]] == [
+              "locked-omilab-hazefira-page-alto-zip"
+          ]
+          assert press["artifacts"][0]["from_cache"] is False
+          PY
           python -m hebocrbench data verify \
             --registry corpora/registry.yaml \
             --source modern-handwriting-lines-v1 \
