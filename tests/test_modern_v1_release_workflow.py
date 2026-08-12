@@ -85,6 +85,48 @@ def test_modern_v1_release_uses_all_locked_shards_and_fails_closed():
     assert "if-no-files-found: error" in text
 
 
+def test_modern_v1_release_pins_and_probes_the_pdf_extraction_runtime():
+    payload, _ = _workflow()
+    env = payload["env"]
+    assert isinstance(env, dict)
+    assert env["PYTHON_VERSION"] == "3.12.13"
+
+    jobs = payload["jobs"]
+    assert isinstance(jobs, dict)
+    build = jobs["build"]
+    assert isinstance(build, dict)
+    steps = {
+        step["name"]: step
+        for step in build["steps"]
+        if isinstance(step, dict) and isinstance(step.get("name"), str)
+    }
+    setup = steps["Set up the pinned Poppler text extractor"]
+    assert setup["uses"] == ("mamba-org/setup-micromamba@f457c30a868e4760d3a6fcea5f25dc655b8edf39")
+    assert setup["with"]["micromamba-version"] == "2.3.2-0"
+    assert setup["with"]["environment-name"] == "hebocrbench-poppler"
+    assert "poppler=26.07.0=he594abd_3" in setup["with"]["create-args"]
+    assert setup["with"]["init-shell"] == "none"
+
+    expose = _step_command(payload, "Expose and verify the pinned Poppler executable")
+    assert 'test "$version" = "pdftotext version 26.07.0"' in expose
+    assert '>> "$GITHUB_PATH"' in expose
+    install = _step_command(payload, "Install the deterministic extraction stack")
+    assert "poppler-utils" not in install
+    assert 'test "$(pdftotext -v 2>&1 | head -n 1)" = "pdftotext version 26.07.0"' in install
+
+    probe = _step_command(payload, "Verify the canonical PDF extraction contract")
+    for value in (
+        "knesset-bill-12458079.pdf",
+        "6c584719459959d456ad8efce4373960fc99f75767018eec5139e9ed7b7a20c3",
+        "f487d38f6be4dfc46d324cf8d534c31030a5ab69eb337fb634bc7b6bf3d12d25",
+        "5f0f489a303487bc96699261228c662f4e2569d37f2a67591dc1aeb902308d07",
+        "0.9829351535836177",
+        "0.9715698393077874",
+        "minimum=0.98",
+    ):
+        assert value in probe
+
+
 def test_modern_v1_release_executes_the_locked_certification_path_only():
     payload, text = _workflow()
     commands = _commands(payload)
