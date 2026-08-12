@@ -1323,7 +1323,7 @@ jobs:
             --output "$RUNNER_TEMP/sanity" \
             --font "$RUNNER_TEMP/NotoSansHebrew[wdth,wght].ttf" \
             --variants clean \
-            --limit 8
+            --limit 28
 
       - name: Build and verify release-code artifacts
         shell: bash

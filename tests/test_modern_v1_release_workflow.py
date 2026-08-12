@@ -223,6 +223,13 @@ def test_modern_v1_release_executes_the_locked_certification_path_only():
     assert '"costly_model_baselines_executed_by_this_workflow": False' in text
 
 
+def test_modern_v1_release_sanity_matrix_includes_vocalized_cases():
+    payload, _ = _workflow()
+    sanity = _step_command(payload, "Run evaluator sanity smoke test")
+    assert "--variants clean" in sanity
+    assert "--limit 28" in sanity
+
+
 def test_modern_v1_release_uses_a_separate_evaluation_projection():
     payload, _ = _workflow()
     commands = _commands(payload)
