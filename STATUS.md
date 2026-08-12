@@ -83,13 +83,20 @@ synthetic diagnostic remains outside every ranking and headline.
   The release workflow verifies the exact sizes and SHA-256 values before
   prepopulating six registry cache targets; HaZefira remains fetched from its
   locked original source.
+- The source-mirror-pinned full release workflow completed successfully on
+  commit `47a4e68f6c5c360bbdced71231adea3a56379e39` in
+  [run 31620240584](https://github.com/office883/HebOCRBench/actions/runs/31620240584).
+  All eight source-shard jobs and the assemble/certify/package job passed,
+  including all ten certified roots, both suite locks, evaluator sanity,
+  release verification and the certification-proof bundle. The uploaded
+  candidate artifact has GitHub artifact ID `9152144845` and digest
+  `sha256:53fad006c00ac1dfbc6fa6f8b5d98f33fc3e279223f23f07397b96af4cba0347`.
 - A deterministic local v1 release candidate was rebuilt twice byte-identically
   from the last merged commit and passed all 48 archive-verifier checks. Final
   attachment bytes will be rebuilt from the tagged release commit.
 
-## Publication gates still pending
+## Publication gate still pending
 
-- obtain a green, source-mirror-pinned `modern-v1-release.yml` run;
 - create the GitHub `v1.0.0` tag and release after the two independent
   baselines and release workflow are complete. The Hugging Face participant-pack
   tag `v1.0.0` is already public.
