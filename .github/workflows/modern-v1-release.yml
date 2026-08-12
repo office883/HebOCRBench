@@ -180,6 +180,36 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          brew update
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          harfbuzz_metadata="$RUNNER_TEMP/harfbuzz-formula.json"
+          curl --fail --location --show-error --silent \
+            --proto '=https' --proto-redir '=https' \
+            https://formulae.brew.sh/api/formula/harfbuzz.json \
+            --output "$harfbuzz_metadata"
+          python - "$harfbuzz_metadata" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert payload["versions"]["stable"] == "14.3.0"
+          bottle = payload["bottle"]["stable"]["files"]["arm64_tahoe"]
+          assert bottle["sha256"] == (
+              "a4d727f73af8892743817d9557e139866060de41302e1e6461908e9d31e2aa0a"
+          )
+          assert payload["ruby_source_checksum"]["sha256"] == (
+              "188aea0a97665d3a2a39ed72b37b249252f25ae92f84e4c9d4054f004b27f936"
+          )
+          PY
+          brew fetch --force --bottle-tag=arm64_tahoe harfbuzz
+          harfbuzz_bottle="$(brew --cache --bottle-tag=arm64_tahoe harfbuzz)"
+          test -f "$harfbuzz_bottle"
+          printf '%s  %s\n' \
+            a4d727f73af8892743817d9557e139866060de41302e1e6461908e9d31e2aa0a \
+            "$harfbuzz_bottle" \
+            | shasum -a 256 --check --strict
+          brew upgrade harfbuzz
           brew install libraqm jpeg-turbo libtiff openjpeg
           test "$(pdftotext -v 2>&1 | head -n 1)" = "pdftotext version 26.07.0"
           test -x /usr/bin/ar
