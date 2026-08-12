@@ -28,11 +28,13 @@ Both blind Modern runs cover all 34,267 inputs with zero runner or API
 failures, and both were admitted with recomputed metrics against the locked
 suite. Both are honestly reported as `non_conformant` because they failed
 mandatory BiDi gates, so neither receives a headline score. The compact public
-results pack contains aggregate metrics and exact score files, while omitting
-gold, raw predictions, images, organizer maps and key material.
+results pack also reports all 2,264 items in each model's five separate
+extension/diagnostic tracks. Those tracks are never blended or ranked. The pack
+contains aggregate metrics and exact score files, while omitting gold, raw
+predictions, images, organizer maps and key material.
 
 - public-results-pack fingerprint:
-  `3d8438ed0224e583146343b0193d026ff266354461aef11614af22277c91be84`.
+  `1e67e1f92c899029f13e8a69387aa0561ada503fea32889eb0c105d57d2a6301`.
 
 The v1 coverage is explicit:
 
