@@ -182,6 +182,7 @@ jobs:
           set -euo pipefail
           brew update
           export HOMEBREW_NO_AUTO_UPDATE=1
+          export HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1
           harfbuzz_metadata="$RUNNER_TEMP/harfbuzz-formula.json"
           curl --fail --location --show-error --silent \
             --proto '=https' --proto-redir '=https' \
@@ -209,7 +210,7 @@ jobs:
             a4d727f73af8892743817d9557e139866060de41302e1e6461908e9d31e2aa0a \
             "$harfbuzz_bottle" \
             | shasum -a 256 --check --strict
-          brew upgrade harfbuzz
+          brew upgrade --force-bottle --yes harfbuzz
           brew install libraqm jpeg-turbo libtiff openjpeg
           test "$(pdftotext -v 2>&1 | head -n 1)" = "pdftotext version 26.07.0"
           test -x /usr/bin/ar
@@ -221,7 +222,9 @@ jobs:
             --requirement .github/modern-v1-build-constraints.txt
           python - <<'PY'
           from importlib.metadata import version
+          import json
           import platform
+          from pathlib import Path
           import subprocess
 
           from PIL import _imaging, _imagingft, features
@@ -252,7 +255,6 @@ jobs:
                   "--versions",
                   "freetype",
                   "fribidi",
-                  "harfbuzz",
                   "jpeg-turbo",
                   "libraqm",
                   "libtiff",
@@ -265,12 +267,42 @@ jobs:
           assert brew_versions == [
               "freetype 2.14.3",
               "fribidi 1.0.16",
-              "harfbuzz 14.3.0",
               "jpeg-turbo 3.2.0",
               "libraqm 0.11.0",
               "libtiff 4.7.2",
               "openjpeg 2.5.4",
           ], brew_versions
+          harfbuzz_info = json.loads(
+              subprocess.run(
+                  ["brew", "info", "--json=v2", "harfbuzz"],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              ).stdout
+          )["formulae"][0]
+          assert harfbuzz_info["linked_keg"] == "14.3.0", harfbuzz_info
+          active_harfbuzz = [
+              item for item in harfbuzz_info["installed"] if item["version"] == "14.3.0"
+          ]
+          assert len(active_harfbuzz) == 1, active_harfbuzz
+          assert active_harfbuzz[0]["built_as_bottle"] is True
+          assert active_harfbuzz[0]["poured_from_bottle"] is True
+          harfbuzz_prefix = Path(
+              subprocess.run(
+                  ["brew", "--prefix", "harfbuzz"],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              ).stdout.strip()
+          ).resolve()
+          assert harfbuzz_prefix.name == "14.3.0", harfbuzz_prefix
+          libraqm_links = subprocess.run(
+              ["otool", "-L", "/opt/homebrew/opt/libraqm/lib/libraqm.0.dylib"],
+              check=True,
+              capture_output=True,
+              text=True,
+          ).stdout
+          assert "/opt/homebrew/opt/harfbuzz/lib/libharfbuzz.0.dylib" in libraqm_links
           imaging_links = subprocess.run(
               ["otool", "-L", _imaging.__file__],
               check=True,
