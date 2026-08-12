@@ -43,6 +43,23 @@ def test_mark_stripping_keeps_base_letters_but_fails_strict_gcer(gold_page):
     assert page.metrics["diacritics"]["mark_recall"] == 0.0
 
 
+def test_diacritics_fail_closed_after_geometry_matches_different_line_ids(gold_page):
+    gold_line = gold_page["regions"][0]["lines"][0]
+    gold_line["text"] = "שָׁלוֹם"
+    prediction = perfect_prediction(gold_page)
+    prediction_line = prediction["regions"][0]["lines"][0]
+    prediction_line["line_id"] = "engine-generated-line-id"
+    prediction_line["text"] = "Project Details"
+
+    page = evaluate_page(gold_page, prediction)
+
+    assert page.metrics["layout"]["lines"]["matched"] == 1
+    assert page.details["line_results"][0]["matched_by"] == "geometry"
+    assert page.metrics["diacritics"]["reference_marks"] == 3
+    assert page.metrics["diacritics"]["predicted_marks"] == 0
+    assert page.metrics["diacritics"]["mark_f1"] == 0.0
+
+
 def test_swapped_columns_preserve_line_recognition_but_fail_page_order(gold_page):
     first = gold_page["regions"][0]
     first["region_id"] = "right"
