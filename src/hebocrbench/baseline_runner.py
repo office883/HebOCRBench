@@ -120,6 +120,7 @@ class BaselineSettings:
     surya_executable: str = "llama-cli"
     surya_server_executable: str = "llama-server"
     surya_max_tokens: int = 4096
+    surya_diagnostic_max_tokens: int | None = None
     surya_image_max_tokens: int = 2048
 
     def validate(self) -> None:
@@ -178,6 +179,13 @@ class BaselineSettings:
             )
         if self.surya_max_tokens <= 0 or self.surya_image_max_tokens <= 0:
             raise BaselineRunnerError("Surya OCR 2 token limits must be positive")
+        if self.surya_diagnostic_max_tokens is not None:
+            if self.surya_diagnostic_max_tokens <= 0:
+                raise BaselineRunnerError("surya_diagnostic_max_tokens must be positive")
+            if self.surya_diagnostic_max_tokens > self.surya_max_tokens:
+                raise BaselineRunnerError(
+                    "surya_diagnostic_max_tokens must not exceed surya_max_tokens"
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -822,7 +830,7 @@ def _normalize_prediction(
     track_id: str,
     page_id: str,
     model: Mapping[str, Any],
-    engine: Engine,
+    settings: BaselineSettings,
 ) -> Prediction:
     result = dict(prediction)
     if str(result.get("page_id", "")) != page_id:
@@ -832,16 +840,18 @@ def _normalize_prediction(
     adapter_model = result.get("model")
     merged_model = dict(adapter_model) if isinstance(adapter_model, Mapping) else {}
     merged_model.update(model)
-    oracle_layout = _uses_oracle_layout(track_id, engine)
-    merged_model["input_mode"] = _input_mode(track_id, engine)
+    oracle_layout = _uses_oracle_layout(track_id, settings.engine)
+    merged_model["input_mode"] = _input_mode(track_id, settings.engine)
     merged_model["oracle_layout"] = oracle_layout
     merged_model["gold_assistance"] = oracle_layout
+    if settings.engine == "surya2-llamacpp":
+        merged_model["max_tokens"] = _effective_surya_max_tokens(track_id, settings)
     result["model"] = merged_model
     result.setdefault("timing_ms", 0.0)
     result.setdefault("status", "ok")
     result.setdefault("failure", None)
     result.setdefault("api_failures", 1 if result["status"] == "failed" else 0)
-    if result["status"] == "failed" and engine == "apple-vision":
+    if result["status"] == "failed" and settings.engine == "apple-vision":
         failure = result.get("failure")
         if isinstance(failure, Mapping):
             normalized_failure = dict(failure)
@@ -913,7 +923,7 @@ def _default_predictor(
                 executable=settings.surya_executable,
                 backend=settings.surya_backend,
                 server_url=settings.surya_server_url,
-                max_tokens=settings.surya_max_tokens,
+                max_tokens=_effective_surya_max_tokens(track_id, settings),
                 image_max_tokens=settings.surya_image_max_tokens,
                 timeout_seconds=settings.timeout_seconds,
                 model_version=str(model["version"]),
@@ -964,6 +974,15 @@ def _cache_key(
             f"expected {declared_sha256}, got {actual_sha256}"
         )
     cache_settings = asdict(settings)
+    if (
+        settings.engine != "surya2-llamacpp"
+        or track_id not in SYNTHETIC_DIAGNOSTIC_TRACKS
+        or settings.surya_diagnostic_max_tokens is None
+    ):
+        # The optional override did not exist in the original cache contract.
+        # Omit it whenever it cannot affect this track so default-None and all
+        # non-diagnostic cache keys remain byte-for-byte backward compatible.
+        cache_settings.pop("surya_diagnostic_max_tokens", None)
     if settings.engine != "surya2-llamacpp" or settings.surya_backend != "server":
         # Server-only audit fields must not invalidate unrelated Tesseract,
         # Apple Vision, or llama-cli cache entries.
@@ -1099,7 +1118,7 @@ def run_baseline_track(
                         track_id=track_id,
                         page_id=page_id,
                         model=model,
-                        engine=settings.engine,
+                        settings=settings,
                     ),
                     True,
                 )
@@ -1129,7 +1148,7 @@ def run_baseline_track(
                 track_id=track_id,
                 page_id=page_id,
                 model=model,
-                engine=settings.engine,
+                settings=settings,
             )
             _write_cache(cache_path, key, track_id, prediction)
         return prediction, False
@@ -1187,6 +1206,18 @@ def _extension_input_mode(track_id: str, engine: Engine) -> str:
     if track_id not in SEPARATE_REPORT_TRACKS:
         raise BaselineRunnerError(f"not a separate-report track: {track_id}")
     return _input_mode(track_id, engine)
+
+
+def _effective_surya_max_tokens(track_id: str, settings: BaselineSettings) -> int:
+    """Return the generation cap that is evidence-relevant for one track."""
+
+    if (
+        settings.engine == "surya2-llamacpp"
+        and track_id in SYNTHETIC_DIAGNOSTIC_TRACKS
+        and settings.surya_diagnostic_max_tokens is not None
+    ):
+        return settings.surya_diagnostic_max_tokens
+    return settings.surya_max_tokens
 
 
 def _extension_adapter(track_id: str, settings: BaselineSettings) -> str:
@@ -1403,6 +1434,11 @@ def run_extension_baseline_suite(
         input_mode = _extension_input_mode(track_id, settings.engine)
         oracle_layout = _uses_oracle_layout(track_id, settings.engine)
         adapter = _extension_adapter(track_id, settings)
+        effective_surya_max_tokens = (
+            _effective_surya_max_tokens(track_id, settings)
+            if settings.engine == "surya2-llamacpp"
+            else None
+        )
         run = evaluate_dataset(selected_gold, predictions, config=spec.benchmark_config)
         run.configuration.update(
             {
@@ -1422,6 +1458,11 @@ def run_extension_baseline_suite(
                 "input_mode": input_mode,
                 "gold_assistance": oracle_layout,
                 "oracle_layout": oracle_layout,
+                **(
+                    {"surya_effective_max_tokens": effective_surya_max_tokens}
+                    if effective_surya_max_tokens is not None
+                    else {}
+                ),
             }
         )
         model_manifest = {
@@ -1432,6 +1473,11 @@ def run_extension_baseline_suite(
             "gold_assistance": oracle_layout,
             "oracle_layout": oracle_layout,
             "adapter": adapter,
+            **(
+                {"max_tokens": effective_surya_max_tokens}
+                if effective_surya_max_tokens is not None
+                else {}
+            ),
         }
         report_dir = reports_root / track_id
         artifacts = write_evaluation_artifacts(
@@ -1451,6 +1497,11 @@ def run_extension_baseline_suite(
             "gold_assistance": oracle_layout,
             "oracle_layout": oracle_layout,
             "adapter": adapter,
+            **(
+                {"effective_max_tokens": effective_surya_max_tokens}
+                if effective_surya_max_tokens is not None
+                else {}
+            ),
             "line_gcer": run.metrics["recognition"]["line_gcer"],
             "line_cer": run.metrics["recognition"]["line_cer"],
             "line_wer": run.metrics["recognition"]["line_wer"],

@@ -8,11 +8,13 @@ import time
 from PIL import Image
 import pytest
 
+import hebocrbench.baseline_runner as runner_module
 from hebocrbench.baseline_runner import (
     BIBLICAL_NIQQUD_DIAGNOSTIC_TRACK,
     BaselineRunnerError,
     BaselineSettings,
     HISTORICAL_PRESS_TRACK,
+    _effective_surya_max_tokens,
     _extension_input_mode,
     _limited_evaluation_records,
     _modern_input_mode,
@@ -476,6 +478,172 @@ def test_surya_server_settings_require_auditable_slot_context(tmp_path: Path) ->
             surya_server_parallel=4,
             surya_server_context_size=16384,
         ).validate()
+
+
+@pytest.mark.parametrize(
+    ("diagnostic_max_tokens", "message"),
+    (
+        (0, "surya_diagnostic_max_tokens must be positive"),
+        (4097, "must not exceed surya_max_tokens"),
+    ),
+)
+def test_surya_diagnostic_token_cap_validation(diagnostic_max_tokens: int, message: str) -> None:
+    with pytest.raises(BaselineRunnerError, match=message):
+        BaselineSettings(
+            engine="tesseract",
+            surya_max_tokens=4096,
+            surya_diagnostic_max_tokens=diagnostic_max_tokens,
+        ).validate()
+
+    BaselineSettings(
+        engine="tesseract",
+        surya_max_tokens=4096,
+        surya_diagnostic_max_tokens=512,
+    ).validate()
+
+
+def test_surya_diagnostic_token_cap_is_selected_only_for_synthetic_diagnostics() -> None:
+    settings = BaselineSettings(
+        engine="surya2-llamacpp",
+        surya_model_path="fixture-model.gguf",
+        surya_mmproj_path="fixture-mmproj.gguf",
+        surya_max_tokens=4096,
+        surya_diagnostic_max_tokens=512,
+    )
+
+    assert _effective_surya_max_tokens(BIBLICAL_NIQQUD_DIAGNOSTIC_TRACK, settings) == 512
+    assert _effective_surya_max_tokens("rashi-print-synthetic-diagnostic-v1", settings) == 512
+    assert _effective_surya_max_tokens("modern-handwriting-v1", settings) == 4096
+    assert _effective_surya_max_tokens(HISTORICAL_PRESS_TRACK, settings) == 4096
+
+
+def test_surya_non_diagnostic_cache_is_byte_identical_with_diagnostic_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _gold_root(
+        tmp_path / "handwriting",
+        pages=1,
+        gold_track="modern_handwriting",
+    )
+    model = tmp_path / "surya.gguf"
+    projector = tmp_path / "surya-mmproj.gguf"
+    model.write_bytes(b"non-diagnostic model")
+    projector.write_bytes(b"non-diagnostic projector")
+    calls: list[int] = []
+
+    def fake_surya(envelopes, **kwargs):
+        calls.append(kwargs["max_tokens"])
+        return [_prediction(str(envelopes[0]["page_id"]))]
+
+    monkeypatch.setattr("hebocrbench.baseline_runner.run_surya2_page_ocr", fake_surya)
+    monkeypatch.setattr("hebocrbench.baseline_runner.llama_cpp_version", lambda value: "10123")
+    base = {
+        "engine": "surya2-llamacpp",
+        "surya_model_path": str(model),
+        "surya_mmproj_path": str(projector),
+        "surya_max_tokens": 4096,
+    }
+    first = run_baseline_track(
+        "modern-handwriting-v1",
+        root,
+        tmp_path / "first.jsonl",
+        cache_root=tmp_path / "cache",
+        settings=BaselineSettings(**base),
+    )
+    cache_dir = tmp_path / "cache/1.0/surya2-llamacpp/modern-handwriting-v1"
+    before = {path.name: path.read_bytes() for path in cache_dir.glob("*.json")}
+    second = run_baseline_track(
+        "modern-handwriting-v1",
+        root,
+        tmp_path / "second.jsonl",
+        cache_root=tmp_path / "cache",
+        settings=BaselineSettings(**base, surya_diagnostic_max_tokens=512),
+        predictor=lambda *args: (_ for _ in ()).throw(AssertionError("cache miss")),
+    )
+    after = {path.name: path.read_bytes() for path in cache_dir.glob("*.json")}
+
+    assert first.cache_misses == 1 and second.cache_hits == 1
+    assert calls == [4096]
+    assert before == after
+    assert first.prediction_path.read_bytes() == second.prediction_path.read_bytes()
+    assert load_jsonl(second.prediction_path)[0]["model"]["max_tokens"] == 4096
+
+
+def test_surya_diagnostic_cap_reuses_legacy_default_cache_and_creates_a_new_capped_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _gold_root(
+        tmp_path / "niqqud",
+        pages=1,
+        held_out_split="diagnostic",
+        gold_track="biblical_niqqud_synthetic_diagnostic",
+    )
+    model = tmp_path / "surya.gguf"
+    projector = tmp_path / "surya-mmproj.gguf"
+    model.write_bytes(b"diagnostic model")
+    projector.write_bytes(b"diagnostic projector")
+    calls: list[int] = []
+
+    def fake_surya(envelopes, **kwargs):
+        calls.append(kwargs["max_tokens"])
+        return [_prediction(str(envelopes[0]["page_id"]))]
+
+    monkeypatch.setattr("hebocrbench.baseline_runner.run_surya2_page_ocr", fake_surya)
+    monkeypatch.setattr("hebocrbench.baseline_runner.llama_cpp_version", lambda value: "10123")
+    real_asdict = runner_module.asdict
+
+    def legacy_asdict(value):
+        serialized = real_asdict(value)
+        serialized.pop("surya_diagnostic_max_tokens", None)
+        return serialized
+
+    base = {
+        "engine": "surya2-llamacpp",
+        "surya_model_path": str(model),
+        "surya_mmproj_path": str(projector),
+        "surya_max_tokens": 4096,
+    }
+    monkeypatch.setattr(runner_module, "asdict", legacy_asdict)
+    legacy = run_baseline_track(
+        BIBLICAL_NIQQUD_DIAGNOSTIC_TRACK,
+        root,
+        tmp_path / "legacy.jsonl",
+        cache_root=tmp_path / "cache",
+        settings=BaselineSettings(**base),
+    )
+    monkeypatch.setattr(runner_module, "asdict", real_asdict)
+    default = run_baseline_track(
+        BIBLICAL_NIQQUD_DIAGNOSTIC_TRACK,
+        root,
+        tmp_path / "default.jsonl",
+        cache_root=tmp_path / "cache",
+        settings=BaselineSettings(**base),
+        predictor=lambda *args: (_ for _ in ()).throw(AssertionError("legacy cache miss")),
+    )
+    capped = run_baseline_track(
+        BIBLICAL_NIQQUD_DIAGNOSTIC_TRACK,
+        root,
+        tmp_path / "capped.jsonl",
+        cache_root=tmp_path / "cache",
+        settings=BaselineSettings(**base, surya_diagnostic_max_tokens=512),
+    )
+    capped_again = run_baseline_track(
+        BIBLICAL_NIQQUD_DIAGNOSTIC_TRACK,
+        root,
+        tmp_path / "capped-again.jsonl",
+        cache_root=tmp_path / "cache",
+        settings=BaselineSettings(**base, surya_diagnostic_max_tokens=512),
+        predictor=lambda *args: (_ for _ in ()).throw(AssertionError("capped cache miss")),
+    )
+    cache_dir = tmp_path / f"cache/1.0/surya2-llamacpp/{BIBLICAL_NIQQUD_DIAGNOSTIC_TRACK}"
+
+    assert legacy.cache_misses == 1 and default.cache_hits == 1
+    assert capped.cache_misses == 1 and capped_again.cache_hits == 1
+    assert calls == [4096, 512]
+    assert len(list(cache_dir.glob("*.json"))) == 2
+    assert load_jsonl(legacy.prediction_path)[0]["model"]["max_tokens"] == 4096
+    assert load_jsonl(capped.prediction_path)[0]["model"]["max_tokens"] == 512
+    assert capped.prediction_path.read_bytes() == capped_again.prediction_path.read_bytes()
 
 
 def test_bidi_locked_diagnostic_split_is_the_only_non_test_exception(tmp_path: Path) -> None:
@@ -1007,6 +1175,12 @@ def test_surya_extension_reports_keep_line_and_page_modes_separate_and_non_headl
         pages=1,
         gold_track="historical_hebrew_press_mixed",
     )
+    niqqud = _gold_root(
+        tmp_path / "niqqud",
+        pages=1,
+        held_out_split="diagnostic",
+        gold_track="biblical_niqqud_synthetic_diagnostic",
+    )
     model = tmp_path / "surya.gguf"
     projector = tmp_path / "surya-mmproj.gguf"
     model.write_bytes(b"suite model")
@@ -1031,12 +1205,14 @@ def test_surya_extension_reports_keep_line_and_page_modes_separate_and_non_headl
         surya_server_parallel=4,
         surya_server_context_size=32768,
         surya_max_tokens=4096,
+        surya_diagnostic_max_tokens=512,
         surya_image_max_tokens=2048,
     )
     summary = run_extension_baseline_suite(
         {
             "modern-handwriting-v1": handwriting,
             HISTORICAL_PRESS_TRACK: press,
+            BIBLICAL_NIQQUD_DIAGNOSTIC_TRACK: niqqud,
         },
         output,
         settings=settings,
@@ -1044,8 +1220,9 @@ def test_surya_extension_reports_keep_line_and_page_modes_separate_and_non_headl
         workers=2,
     )
 
-    assert len(calls) == 2
+    assert len(calls) == 3
     assert all(call["backend"] == "server" for call in calls)
+    assert [call["max_tokens"] for call in calls] == [4096, 4096, 512]
     assert summary["engine"] == "surya2-llamacpp"
     assert summary["settings"]["surya_model_path"] == str(model)
     assert summary["settings"]["surya_mmproj_path"] == str(projector)
@@ -1054,6 +1231,7 @@ def test_surya_extension_reports_keep_line_and_page_modes_separate_and_non_headl
     assert summary["settings"]["surya_server_parallel"] == 4
     assert summary["settings"]["surya_server_context_size"] == 32768
     assert summary["settings"]["surya_max_tokens"] == 4096
+    assert summary["settings"]["surya_diagnostic_max_tokens"] == 512
     assert summary["settings"]["surya_image_max_tokens"] == 2048
     assert summary["reporting_policy"] == {
         "modern_headline_blending": False,
@@ -1061,15 +1239,18 @@ def test_surya_extension_reports_keep_line_and_page_modes_separate_and_non_headl
         "synthetic_diagnostics_rankable": False,
     }
     expected = {
-        "modern-handwriting-v1": "blind_whole_line_image",
-        HISTORICAL_PRESS_TRACK: "blind_full_page_image",
+        "modern-handwriting-v1": ("blind_whole_line_image", 4096),
+        HISTORICAL_PRESS_TRACK: ("blind_full_page_image", 4096),
+        BIBLICAL_NIQQUD_DIAGNOSTIC_TRACK: ("blind_whole_line_image", 512),
     }
-    for track_id, input_mode in expected.items():
+    for track_id, (input_mode, max_tokens) in expected.items():
         track = summary["tracks"][track_id]
         manifest = json.loads(
             (output / f"reports/{track_id}/run_manifest.json").read_text(encoding="utf-8")
         )
+        prediction = load_jsonl(output / f"predictions/{track_id}.jsonl")[0]
         assert track["input_mode"] == input_mode
+        assert track["effective_max_tokens"] == max_tokens
         assert track["oracle_layout"] is False
         assert track["gold_assistance"] is False
         assert track["adapter"] == "surya2_llamacpp_server_page_e2e"
@@ -1080,4 +1261,7 @@ def test_surya_extension_reports_keep_line_and_page_modes_separate_and_non_headl
         assert manifest["model"]["oracle_layout"] is False
         assert manifest["model"]["gold_assistance"] is False
         assert manifest["model"]["adapter"] == "surya2_llamacpp_server_page_e2e"
+        assert manifest["model"]["max_tokens"] == max_tokens
+        assert manifest["configuration"]["surya_effective_max_tokens"] == max_tokens
+        assert prediction["model"]["max_tokens"] == max_tokens
     assert not (output / "modern-score.json").exists()

@@ -80,6 +80,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--surya-executable", default="llama-cli")
     parser.add_argument("--surya-server-executable", default="llama-server")
     parser.add_argument("--surya-max-tokens", type=int, default=4096)
+    parser.add_argument(
+        "--surya-diagnostic-max-tokens",
+        type=int,
+        help="Optional lower generation cap used only by synthetic diagnostic tracks",
+    )
     parser.add_argument("--surya-image-max-tokens", type=int, default=2048)
     args = parser.parse_args(argv)
 
@@ -104,6 +109,7 @@ def main(argv: list[str] | None = None) -> int:
                 surya_executable=args.surya_executable,
                 surya_server_executable=args.surya_server_executable,
                 surya_max_tokens=args.surya_max_tokens,
+                surya_diagnostic_max_tokens=args.surya_diagnostic_max_tokens,
                 surya_image_max_tokens=args.surya_image_max_tokens,
             ),
             max_pages=args.max_pages,

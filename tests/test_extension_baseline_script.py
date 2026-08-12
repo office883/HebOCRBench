@@ -59,6 +59,8 @@ def test_cli_forwards_the_full_surya_server_configuration(tmp_path, monkeypatch,
             "llama-server-test",
             "--surya-max-tokens",
             "4096",
+            "--surya-diagnostic-max-tokens",
+            "768",
             "--surya-image-max-tokens",
             "2048",
         ]
@@ -83,6 +85,7 @@ def test_cli_forwards_the_full_surya_server_configuration(tmp_path, monkeypatch,
     assert settings.surya_executable == "llama-cli-test"
     assert settings.surya_server_executable == "llama-server-test"
     assert settings.surya_max_tokens == 4096
+    assert settings.surya_diagnostic_max_tokens == 768
     assert settings.surya_image_max_tokens == 2048
     assert json.loads(capsys.readouterr().out) == {
         "engine": "surya2-llamacpp",
