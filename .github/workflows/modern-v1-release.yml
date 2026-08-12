@@ -16,6 +16,9 @@ concurrency:
 
 env:
   PYTHON_VERSION: '3.12.13'
+  PYTHON_RUNTIME_URL: https://github.com/astral-sh/python-build-standalone/releases/download/20260303/cpython-3.12.13%2B20260303-aarch64-apple-darwin-install_only_stripped.tar.gz
+  PYTHON_RUNTIME_SHA256: 377234f346fce41b6d3112b5ead89cb6af2d5596244f9edc1a739065770dde1f
+  PYTHON_RUNTIME_SIZE: '17665685'
   SHARD_COUNT: '8'
   SELECTION_SHA256: 4c0ebc58784d565f225b8a412ffa93146df4c417de479464f1d9f283ecf7af52
   EFFECTIVE_SELECTION_SHA256: a68d2b1fd1beda4e68b2d426b137abfc393611fcaefcacde7726932174915acd
@@ -85,7 +88,10 @@ jobs:
   build:
     name: Assemble, certify and package the ten-component suite
     needs: shards
-    runs-on: ubuntu-24.04
+    # The canonical public-document root was sealed on macOS arm64.  The same
+    # PyMuPDF version produces different locked raster bytes on Linux x64, even
+    # when the PDF/text extraction contract passes.
+    runs-on: macos-26
     timeout-minutes: 240
     env:
       PYTHONPATH: ${{ github.workspace }}/src
@@ -93,14 +99,55 @@ jobs:
       - name: Check out the exact release commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Set up pinned Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: |
-            pyproject.toml
-            .github/modern-v1-build-constraints.txt
+      - name: Install the exact canonical Python runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/cpython-3.12.13+20260303-aarch64-apple-darwin-stripped.tar.gz"
+          runtime="$RUNNER_TEMP/canonical-python"
+          curl --fail --location --show-error --silent \
+            --proto '=https' --proto-redir '=https' \
+            "$PYTHON_RUNTIME_URL" \
+            --output "$archive"
+          test "$(stat -f '%z' "$archive")" -eq "$PYTHON_RUNTIME_SIZE"
+          printf '%s  %s\n' "$PYTHON_RUNTIME_SHA256" "$archive" \
+            | shasum -a 256 --check --strict
+          mkdir -p "$runtime"
+          tar -xzf "$archive" -C "$runtime"
+          test -x "$runtime/python/bin/python3"
+          printf '%s  %s\n' \
+            eb9d74b9c7cfdfb2c9b91614edb2c3607360ba46c5aa7fc4557b3a4a23e97cff \
+            "$runtime/python/bin/python3.12" \
+            | shasum -a 256 --check --strict
+          printf '%s  %s\n' \
+            0d755ba198b32fa06bea90d801ec33a4a83961e55839b16a8e322dc23ed74e48 \
+            "$runtime/python/lib/libpython3.12.dylib" \
+            | shasum -a 256 --check --strict
+          printf '%s  %s\n' \
+            39ecccd16d25f60793675a79ec545ba50bdd10bd4c13f756ee9a50ab485cc6ee \
+            "$runtime/python/lib/python3.12/_sysconfigdata__darwin_darwin.py" \
+            | shasum -a 256 --check --strict
+          "$runtime/python/bin/python3" - <<'PY'
+          import platform
+          import ssl
+          import sys
+          import sysconfig
+
+          import pip
+
+          assert platform.system() == "Darwin"
+          assert platform.machine() == "arm64"
+          assert platform.python_version() == "3.12.13"
+          assert sys.version == (
+              "3.12.13 (main, Mar  3 2026, 15:35:03) [Clang 21.1.4 ]"
+          )
+          assert sysconfig.get_config_var("HOST_GNU_TYPE") == "aarch64-apple-darwin"
+          assert sysconfig.get_config_var("ARFLAGS") == "rcs"
+          assert sysconfig.get_config_var("AR").endswith("/tools/llvm/bin/llvm-ar")
+          assert ssl.OPENSSL_VERSION == "OpenSSL 3.5.5 27 Jan 2026"
+          assert pip.__version__ == "26.0.1"
+          PY
+          printf '%s\n' "$runtime/python/bin" >> "$GITHUB_PATH"
 
       - name: Set up the pinned Poppler text extractor
         id: poppler
@@ -112,7 +159,7 @@ jobs:
           environment-name: hebocrbench-poppler
           create-args: >-
             -c conda-forge
-            poppler=26.07.0=he594abd_3
+            poppler=26.07.0=h4cfec15_3
           init-shell: none
           cache-downloads: false
           cache-environment: false
@@ -133,14 +180,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends curl libraqm0
+          brew install libraqm jpeg-turbo libtiff openjpeg
           test "$(pdftotext -v 2>&1 | head -n 1)" = "pdftotext version 26.07.0"
+          test -x /usr/bin/ar
+          export AR=/usr/bin/ar
+          export ARFLAGS=rcs
           python -m pip install \
+            --no-cache-dir \
+            --no-binary Pillow \
             --requirement .github/modern-v1-build-constraints.txt
           python - <<'PY'
           from importlib.metadata import version
-          from PIL import features
+          import platform
+          import subprocess
+
+          from PIL import _imaging, _imagingft, features
 
           expected = {
               "Pillow": "12.2.0",
@@ -153,7 +207,57 @@ jobs:
           }
           actual = {name: version(name) for name in expected}
           assert actual == expected, (actual, expected)
+          assert platform.system() == "Darwin"
+          assert platform.machine() == "arm64"
           assert features.check("raqm"), "Pillow lacks RAQM; Hebrew shaping would be invalid"
+          assert features.version("raqm") == "0.11.0"
+          assert features.version("freetype2") == "2.14.3"
+          assert features.version("jpg") == "8.0"
+          assert features.version("jpg_2000") == "2.5.4"
+          assert features.version("libtiff") == "4.7.2"
+          brew_versions = subprocess.run(
+              [
+                  "brew",
+                  "list",
+                  "--versions",
+                  "freetype",
+                  "fribidi",
+                  "harfbuzz",
+                  "jpeg-turbo",
+                  "libraqm",
+                  "libtiff",
+                  "openjpeg",
+              ],
+              check=True,
+              capture_output=True,
+              text=True,
+          ).stdout.splitlines()
+          assert brew_versions == [
+              "freetype 2.14.3",
+              "fribidi 1.0.16",
+              "harfbuzz 14.3.0",
+              "jpeg-turbo 3.2.0",
+              "libraqm 0.11.0",
+              "libtiff 4.7.2",
+              "openjpeg 2.5.4",
+          ], brew_versions
+          imaging_links = subprocess.run(
+              ["otool", "-L", _imaging.__file__],
+              check=True,
+              capture_output=True,
+              text=True,
+          ).stdout
+          assert "/opt/homebrew/opt/jpeg-turbo/lib/libjpeg.8.dylib" in imaging_links
+          assert "/opt/homebrew/opt/libtiff/lib/libtiff.6.dylib" in imaging_links
+          assert "/opt/homebrew/opt/openjpeg/lib/libopenjp2.7.dylib" in imaging_links
+          imagingft_links = subprocess.run(
+              ["otool", "-L", _imagingft.__file__],
+              check=True,
+              capture_output=True,
+              text=True,
+          ).stdout
+          assert "/opt/homebrew/opt/freetype/lib/libfreetype.6.dylib" in imagingft_links
+          assert "/opt/homebrew/opt/libraqm/lib/libraqm.0.dylib" in imagingft_links
           PY
 
       - name: Run release-pipeline smoke tests
@@ -192,7 +296,18 @@ jobs:
             test -s "$source/SHARD.json"
             mv "$source" "$destination"
           done
-          test "$(find "$RUNNER_TEMP/shards" -mindepth 2 -maxdepth 2 -name SHARD.json -type f | wc -l)" -eq "$SHARD_COUNT"
+          python - "$RUNNER_TEMP/shards" "$SHARD_COUNT" <<'PY'
+          from pathlib import Path
+          import sys
+
+          root = Path(sys.argv[1])
+          expected = int(sys.argv[2])
+          manifests = sorted(root.glob("shard-*/SHARD.json"))
+          assert len(manifests) == expected, (len(manifests), expected)
+          assert {path.parent.name for path in manifests} == {
+              f"shard-{index:03d}" for index in range(expected)
+          }
+          PY
 
       - name: Assemble the locked source and apply the reviewed replacement lock
         shell: bash
@@ -263,9 +378,16 @@ jobs:
 
           document = fitz.open(pdf)
           try:
-              _, pymupdf_text = engine._extract_regions(document[25], 200 / 72)
+              page = document[25]
+              _, pymupdf_text = engine._extract_regions(page, 200 / 72)
+              pixmap = page.get_pixmap(matrix=fitz.Matrix(200 / 72, 200 / 72), alpha=False)
+              png_bytes = pixmap.tobytes("png")
           finally:
               document.close()
+          assert len(png_bytes) == 365988
+          assert hashlib.sha256(png_bytes).hexdigest() == (
+              "df30e112805ae5fd61035d28e7938c0344087b4694bd646146ac84df3aad271f"
+          )
           assert hashlib.sha256(pymupdf_text.encode("utf-8")).hexdigest() == (
               "5f0f489a303487bc96699261228c662f4e2569d37f2a67591dc1aeb902308d07"
           )
@@ -313,9 +435,9 @@ jobs:
               --proto '=https' --proto-redir '=https' \
               "https://huggingface.co/datasets/$SOURCE_MIRROR_REPOSITORY/resolve/$SOURCE_MIRROR_REVISION/$relative_path?download=true" \
               --output "$destination.part"
-            test "$(stat --format='%s' "$destination.part")" -eq "$expected_size"
+            test "$(stat -f '%z' "$destination.part")" -eq "$expected_size"
             printf '%s  %s\n' "$expected_sha256" "$destination.part" \
-              | sha256sum --check --strict
+              | shasum -a 256 --check --strict
             mv "$destination.part" "$destination"
           }
 
@@ -385,24 +507,38 @@ jobs:
               assert digest.hexdigest() == expected_sha256, relative
           PY
 
-          install -D -m 0644 \
-            "$mirror/htr/stage3_human_finetune/test-00000.parquet" \
-            "$cache/modern-handwriting-lines-v1/stage3_human_finetune/test-00000.parquet"
-          install -D -m 0644 \
-            "$mirror/pinkas/historical-pinkas-handwriting-test-v1.tar" \
-            "$cache/historical-pinkas-handwriting-v1/historical-pinkas-handwriting-test-v1.tar"
-          install -D -m 0644 \
-            "$mirror/foundation/test-synthetic-mixed-000.tar" \
-            "$cache/biblical-niqqud-synthetic-diagnostic-v1/test-synthetic-mixed-000.tar"
-          install -D -m 0644 \
-            "$mirror/foundation/train-niqqud-000.tar" \
-            "$cache/biblical-niqqud-synthetic-diagnostic-v1/train-niqqud-000.tar"
-          install -D -m 0644 \
-            "$mirror/foundation/test-synthetic-mixed-000.tar" \
-            "$cache/rashi-print-synthetic-diagnostic-v1/test-synthetic-mixed-000.tar"
-          install -D -m 0644 \
-            "$mirror/foundation/train-rashi-000.tar" \
-            "$cache/rashi-print-synthetic-diagnostic-v1/train-rashi-000.tar"
+          python - "$mirror" "$cache" <<'PY'
+          from pathlib import Path
+          import shutil
+          import sys
+
+          mirror = Path(sys.argv[1])
+          cache = Path(sys.argv[2])
+          copies = {
+              "htr/stage3_human_finetune/test-00000.parquet": (
+                  "modern-handwriting-lines-v1/stage3_human_finetune/test-00000.parquet"
+              ),
+              "pinkas/historical-pinkas-handwriting-test-v1.tar": (
+                  "historical-pinkas-handwriting-v1/historical-pinkas-handwriting-test-v1.tar"
+              ),
+              "foundation/test-synthetic-mixed-000.tar": (
+                  "biblical-niqqud-synthetic-diagnostic-v1/test-synthetic-mixed-000.tar"
+              ),
+              "foundation/train-niqqud-000.tar": (
+                  "biblical-niqqud-synthetic-diagnostic-v1/train-niqqud-000.tar"
+              ),
+              "foundation/train-rashi-000.tar": (
+                  "rashi-print-synthetic-diagnostic-v1/train-rashi-000.tar"
+              ),
+          }
+          for source_relative, destination_relative in copies.items():
+              destination = cache / destination_relative
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(mirror / source_relative, destination)
+          rashi_test = cache / "rashi-print-synthetic-diagnostic-v1/test-synthetic-mixed-000.tar"
+          rashi_test.parent.mkdir(parents=True, exist_ok=True)
+          shutil.copyfile(mirror / "foundation/test-synthetic-mixed-000.tar", rashi_test)
+          PY
 
           python - "$cache" <<'PY'
           import hashlib
@@ -460,6 +596,7 @@ jobs:
           set -euo pipefail
           cache="$RUNNER_TEMP/extension-sources"
           fetch_report="$RUNNER_TEMP/extension-source-fetch.json"
+          verify_report="$RUNNER_TEMP/extension-source-verify.json"
           python -m hebocrbench data fetch \
             --registry corpora/registry.yaml \
             --source modern-handwriting-lines-v1 \
@@ -506,7 +643,7 @@ jobs:
             --source historical-hebrew-press-mixed-v1 \
             --source biblical-niqqud-synthetic-diagnostic-v1 \
             --source rashi-print-synthetic-diagnostic-v1 \
-            --cache "$cache"
+            --cache "$cache" > "$verify_report"
 
           for source in biblical-niqqud-synthetic-diagnostic-v1 rashi-print-synthetic-diagnostic-v1; do
             mkdir -p "$cache/$source/shards"
@@ -565,6 +702,69 @@ jobs:
           assert not (cache / "modern-handwriting-lines-v1" / "ssdataanalysis-hebrew-htr-curated-v1").exists()
           PY
 
+          python - "$cache" "$RUNNER_TEMP/canonical-extension-sources" \
+            "$RUNNER_TEMP/acquisition-evidence" "$fetch_report" "$verify_report" <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+          import sys
+
+          cache = Path(sys.argv[1])
+          canonical = Path(sys.argv[2])
+          evidence = Path(sys.argv[3])
+          fetch_report = Path(sys.argv[4])
+          verify_report = Path(sys.argv[5])
+          assert json.loads(fetch_report.read_text(encoding="utf-8"))["sources"]
+          assert json.loads(verify_report.read_text(encoding="utf-8"))["sources"]
+          evidence.mkdir(parents=True)
+          shutil.copyfile(fetch_report, evidence / "fetch-report.json")
+          shutil.copyfile(verify_report, evidence / "verify-report.json")
+
+          source_ids = (
+              "modern-handwriting-lines-v1",
+              "historical-pinkas-handwriting-v1",
+              "historical-hebrew-press-mixed-v1",
+              "biblical-niqqud-synthetic-diagnostic-v1",
+              "rashi-print-synthetic-diagnostic-v1",
+          )
+          markers = evidence / "acquisition-markers"
+          markers.mkdir()
+          for source_id in source_ids:
+              marker = cache / source_id / ".hebocrbench-source.json"
+              assert marker.is_file(), source_id
+              shutil.copyfile(marker, markers / f"{source_id}.json")
+
+          files = {
+              "modern-handwriting-lines-v1/stage3_human_finetune/test-00000.parquet": (
+                  "modern-handwriting-lines-v1/stage3_human_finetune/test-00000.parquet"
+              ),
+              "historical-pinkas-handwriting-v1/historical-pinkas-handwriting-test-v1.tar": (
+                  "historical-pinkas-handwriting-v1/historical-pinkas-handwriting-test-v1.tar"
+              ),
+              "biblical-niqqud-synthetic-diagnostic-v1/shards/test-synthetic-mixed-000.tar": (
+                  "biblical-niqqud-synthetic-diagnostic-v1/shards/test-synthetic-mixed-000.tar"
+              ),
+              "biblical-niqqud-synthetic-diagnostic-v1/shards/train-niqqud-000.tar": (
+                  "biblical-niqqud-synthetic-diagnostic-v1/shards/train-niqqud-000.tar"
+              ),
+              "rashi-print-synthetic-diagnostic-v1/shards/test-synthetic-mixed-000.tar": (
+                  "rashi-print-synthetic-diagnostic-v1/shards/test-synthetic-mixed-000.tar"
+              ),
+              "rashi-print-synthetic-diagnostic-v1/shards/train-rashi-000.tar": (
+                  "rashi-print-synthetic-diagnostic-v1/shards/train-rashi-000.tar"
+              ),
+          }
+          for source_relative, destination_relative in files.items():
+              source = cache / source_relative
+              destination = canonical / destination_relative
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              os.link(source, destination)
+              assert source.stat().st_ino == destination.stat().st_ino
+          assert not list(canonical.rglob(".hebocrbench-source.json"))
+          assert len(list(markers.glob("*.json"))) == len(source_ids)
+          PY
+
       - name: Download and verify the immutable diagnostic font
         shell: bash
         run: |
@@ -573,7 +773,8 @@ jobs:
           curl --fail --location --silent --show-error \
             --proto '=https' --proto-redir '=https' \
             "$NOTO_HEBREW_URL" --output "$font"
-          printf '%s  %s\n' "$NOTO_HEBREW_SHA256" "$font" | sha256sum --check --strict
+          printf '%s  %s\n' "$NOTO_HEBREW_SHA256" "$font" \
+            | shasum -a 256 --check --strict
           python - "$font" "$RUNNER_TEMP/build-environment.json" <<'PY'
           from importlib.metadata import version
           import hashlib
@@ -686,16 +887,22 @@ jobs:
 
           root = Path(sys.argv[1])
           expected = {
-              "modern-bidi-v1": 192,
-              "modern-page-ocr-v1": 700,
+              "modern-bidi-v1": (
+                  192,
+                  "51f11870b20aa2a0a9f789391ab9ea97b897a62207c23cc73a064c0e5809c756",
+              ),
+              "modern-page-ocr-v1": (
+                  700,
+                  "c071a31d87630e5f6dfba15886dbf934c55379fa3e0f9ed22924f938231bee62",
+              ),
           }
-          for track_id, pages in expected.items():
+          for track_id, (pages, fingerprint) in expected.items():
               manifest = json.loads((root / track_id / "manifest.json").read_text(encoding="utf-8"))
               lock = json.loads((root / track_id / "dataset.lock.json").read_text(encoding="utf-8"))
               assert manifest["track_id"] == track_id
               assert manifest["profile_scope"] == "track-component"
               assert manifest["stats"]["pages"] == pages
-              assert len(manifest["dataset_fingerprint"]) == 64
+              assert manifest["dataset_fingerprint"] == fingerprint
               assert lock["dataset_fingerprint"] == manifest["dataset_fingerprint"]
               assert lock["registry_fingerprint"] == manifest["registry_fingerprint"]
           PY
@@ -722,6 +929,37 @@ jobs:
           python scripts/build_canonical_tracks.py \
             --source-root "$RUNNER_TEMP/roots/modern-page-ocr-v1" \
             --output "$RUNNER_TEMP/evaluation-roots"
+          python - "$RUNNER_TEMP/evaluation-roots" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+
+          roots = Path(sys.argv[1])
+          expected = {
+              "modern-line-recognition-v1": (
+                  28414,
+                  "e8c56278525c00e3532d0c8445469af4ddb431257f7cc613ef3e3be45366233d",
+              ),
+              "modern-page-ocr-v1": (
+                  700,
+                  "99da38cde7317555806301e3fda9572ac0628bbde06eceb37cc07070296fd261",
+              ),
+              "modern-tables-v1": (
+                  61,
+                  "cf801f22cb848295d36021e1f43e721da4366c51b3ba4264744fb6d1fa5e16b4",
+              ),
+              "modern-robustness-v1": (
+                  4900,
+                  "d0145c7e63faf72a605991edebfd5a3010e436e73f145d51124af4beb6d37e31",
+              ),
+          }
+          for track_id, (pages, fingerprint) in expected.items():
+              manifest = json.loads(
+                  (roots / track_id / "manifest.json").read_text(encoding="utf-8")
+              )
+              assert manifest["page_count"] == pages, track_id
+              assert manifest["dataset_fingerprint"] == fingerprint, track_id
+          PY
           for track in modern-page-ocr-v1 modern-line-recognition-v1 modern-tables-v1 modern-robustness-v1; do
             root="$RUNNER_TEMP/evaluation-roots/$track"
             test -s "$root/gold.jsonl"
@@ -739,13 +977,14 @@ jobs:
         run: |
           set -euo pipefail
           cache="$RUNNER_TEMP/extension-sources"
+          canonical="$RUNNER_TEMP/canonical-extension-sources"
           roots="$RUNNER_TEMP/extension-roots"
           mkdir -p "$roots"
           python -m hebocrbench data build \
             --registry corpora/registry.yaml \
             --profiles corpora/profiles.yaml \
             --source modern-handwriting-lines-v1 \
-            --source-root "modern-handwriting-lines-v1=$cache/modern-handwriting-lines-v1" \
+            --source-root "modern-handwriting-lines-v1=$canonical/modern-handwriting-lines-v1" \
             --output "$roots/modern-handwriting-v1" \
             --profile modern-hebrew-handwriting-v1 \
             --track-id modern-handwriting-v1 \
@@ -754,10 +993,11 @@ jobs:
             --registry corpora/registry.yaml \
             --profiles corpora/profiles.yaml \
             --source historical-pinkas-handwriting-v1 \
-            --source-root "historical-pinkas-handwriting-v1=$cache/historical-pinkas-handwriting-v1" \
+            --source-root "historical-pinkas-handwriting-v1=$canonical/historical-pinkas-handwriting-v1" \
             --output "$roots/historical-pinkas-handwriting-v1" \
             --profile historical-pinkas-handwriting-v1 \
-            --track-id historical-pinkas-handwriting-v1
+            --track-id historical-pinkas-handwriting-v1 \
+            --profile-scope full
           python -m hebocrbench data build \
             --registry corpora/registry.yaml \
             --profiles corpora/profiles.yaml \
@@ -765,23 +1005,68 @@ jobs:
             --source-root "historical-hebrew-press-mixed-v1=$cache/historical-hebrew-press-mixed-v1/locked-omilab-hazefira-page-alto-zip.extracted" \
             --output "$roots/historical-hebrew-press-mixed-v1" \
             --profile historical-hebrew-press-mixed-v1 \
-            --track-id historical-hebrew-press-mixed-v1
+            --track-id historical-hebrew-press-mixed-v1 \
+            --profile-scope full
           python -m hebocrbench data build \
             --registry corpora/registry.yaml \
             --profiles corpora/profiles.yaml \
             --source biblical-niqqud-synthetic-diagnostic-v1 \
-            --source-root "biblical-niqqud-synthetic-diagnostic-v1=$cache/biblical-niqqud-synthetic-diagnostic-v1" \
+            --source-root "biblical-niqqud-synthetic-diagnostic-v1=$canonical/biblical-niqqud-synthetic-diagnostic-v1" \
             --output "$roots/biblical-niqqud-synthetic-diagnostic-v1" \
             --profile biblical-niqqud-synthetic-diagnostic-v1 \
-            --track-id biblical-niqqud-synthetic-diagnostic-v1
+            --track-id biblical-niqqud-synthetic-diagnostic-v1 \
+            --profile-scope full
           python -m hebocrbench data build \
             --registry corpora/registry.yaml \
             --profiles corpora/profiles.yaml \
             --source rashi-print-synthetic-diagnostic-v1 \
-            --source-root "rashi-print-synthetic-diagnostic-v1=$cache/rashi-print-synthetic-diagnostic-v1" \
+            --source-root "rashi-print-synthetic-diagnostic-v1=$canonical/rashi-print-synthetic-diagnostic-v1" \
             --output "$roots/rashi-print-synthetic-diagnostic-v1" \
             --profile rashi-print-synthetic-diagnostic-v1 \
-            --track-id rashi-print-synthetic-diagnostic-v1
+            --track-id rashi-print-synthetic-diagnostic-v1 \
+            --profile-scope full
+
+          python - "$roots" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+
+          roots = Path(sys.argv[1])
+          expected = {
+              "modern-handwriting-v1": (
+                  964,
+                  "track-component",
+                  "9b0ee1b4c8c230c4b012906cdd3d344e9f25a1325058ed5849fafe579e46767b",
+              ),
+              "historical-pinkas-handwriting-v1": (
+                  266,
+                  "full",
+                  "fb687ec4a77c54db10f6aadb0bc982eceeb71c28083cddd566d6a2d6ba4dcb9d",
+              ),
+              "historical-hebrew-press-mixed-v1": (
+                  34,
+                  "full",
+                  "16aed8a8fc31ae1aaf957fe973b2b1dbdd0f911156f7539a78ceaafe56240143",
+              ),
+              "biblical-niqqud-synthetic-diagnostic-v1": (
+                  500,
+                  "full",
+                  "4c6ecba0b4487213fa95a1a7833fa546e41e2664b91fd9700f915c5c686e38fb",
+              ),
+              "rashi-print-synthetic-diagnostic-v1": (
+                  500,
+                  "full",
+                  "c9e2732ab5ca0467635ae386c84b5d98045973641091887eedf0fd5cbba937a5",
+              ),
+          }
+          for track_id, (pages, profile_scope, fingerprint) in expected.items():
+              manifest = json.loads(
+                  (roots / track_id / "manifest.json").read_text(encoding="utf-8")
+              )
+              assert manifest["page_count"] == pages, track_id
+              assert manifest["profile_scope"] == profile_scope, track_id
+              assert manifest["dataset_fingerprint"] == fingerprint, track_id
+          PY
 
           for track in \
             modern-handwriting-v1 \
@@ -1038,7 +1323,7 @@ jobs:
               )
           PY
           cd "$release"
-          sha256sum --check --strict HebOCRBench-v1.0.0-SHA256SUMS.txt
+          shasum -a 256 --check --strict HebOCRBench-v1.0.0-SHA256SUMS.txt
           cd "$GITHUB_WORKSPACE"
           python scripts/verify_v1_release.py \
             --root "$GITHUB_WORKSPACE" \
@@ -1057,7 +1342,7 @@ jobs:
             --report "$release/HebOCRBench-v1.0.0-verification.json" \
             --skip-tests
           cd "$release"
-          sha256sum HebOCRBench-v1.0.0-verification.json \
+          shasum -a 256 HebOCRBench-v1.0.0-verification.json \
             > HebOCRBench-v1.0.0-verification.json.sha256
 
       - name: Write non-redistributive certification proof bundle
@@ -1069,6 +1354,7 @@ jobs:
           cp "$RUNNER_TEMP/modern-suite-v1.lock.json" "$proof/"
           cp "$RUNNER_TEMP/full-suite-v1.lock.json" "$proof/"
           cp "$RUNNER_TEMP/release/HebOCRBench-v1.0.0-component-proof.json" "$proof/"
+          cp -R "$RUNNER_TEMP/acquisition-evidence" "$proof/"
           cp "$RUNNER_TEMP/sources/modern-public-documents-v1/evidence/summary.json" \
             "$proof/modern-public-selection-summary.json"
           parent="$RUNNER_TEMP/roots/modern-page-ocr-v1"
