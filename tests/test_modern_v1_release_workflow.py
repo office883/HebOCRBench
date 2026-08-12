@@ -143,6 +143,57 @@ def test_modern_v1_release_fetches_and_verifies_every_locked_extension_source():
     assert '"pyarrow": "23.0.1"' in text
 
 
+def test_release_workflow_prepopulates_exact_pinned_public_source_mirror():
+    payload, _ = _workflow()
+    env = payload["env"]
+    assert isinstance(env, dict)
+    assert env["SOURCE_MIRROR_REPOSITORY"] == ("ssdataanalysis/hebocrbench-v1-sources")
+    assert env["SOURCE_MIRROR_REVISION"] == ("3d6dcbfedeeeb1234db84131abc92272abff0625")
+
+    mirror = _step_command(
+        payload, "Prepopulate locked extension sources from pinned public mirror"
+    )
+    expected = {
+        "foundation/test-synthetic-mixed-000.tar": (
+            "64563200",
+            "12886b77eefb54f73ed2ea9ba9ddf4766de60ed2635126248344739626608927",
+        ),
+        "foundation/train-niqqud-000.tar": (
+            "318689280",
+            "05cd60b91ce566b23dd7024665026a615f2127b7abfaf8e8a10afd92d3945ff4",
+        ),
+        "foundation/train-rashi-000.tar": (
+            "118077440",
+            "f1adca1ba117160266325b2002abe62896f06986242ef145a34296852f7190ee",
+        ),
+        "htr/stage3_human_finetune/test-00000.parquet": (
+            "18939757",
+            "19823993891409e7fc90cac38230822cb88dd2010955a53d4618bfbc226f7d45",
+        ),
+        "pinkas/historical-pinkas-handwriting-test-v1.tar": (
+            "418498560",
+            "d986a3527d1ddae19cf2f09f3ff5e84458eeb5e1f6f9cb4e2a48d895dfcd5eb6",
+        ),
+    }
+    assert mirror.count("download_locked \\") == 5
+    assert mirror.count("install -D -m 0644 \\") == 6
+    for path, (size, sha256) in expected.items():
+        assert path in mirror
+        assert size in mirror
+        assert sha256 in mirror
+
+    fetch = _step_command(payload, "Fetch and verify all locked extension and diagnostic sources")
+    expected_hits = {
+        '"modern-handwriting-lines-v1": (1, 0)',
+        '"historical-pinkas-handwriting-v1": (1, 0)',
+        '"biblical-niqqud-synthetic-diagnostic-v1": (2, 0)',
+        '"rashi-print-synthetic-diagnostic-v1": (2, 0)',
+        '"historical-hebrew-press-mixed-v1": (0, 1)',
+    }
+    for expectation in expected_hits:
+        assert expectation in fetch
+
+
 def test_full_suite_build_verify_and_release_are_bound_to_all_ten_roots():
     payload, text = _workflow()
     lock_command = _step_command(

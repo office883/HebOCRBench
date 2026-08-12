@@ -36,6 +36,17 @@ predictions, images, organizer maps and key material.
 - public-results-pack fingerprint:
   `1e67e1f92c899029f13e8a69387aa0561ada503fea32889eb0c105d57d2a6301`.
 
+## Public v1 release-source mirror
+
+The release workflow reads five immutable source artifacts from the public
+[source mirror pinned at revision
+`3d6dcbfedeeeb1234db84131abc92272abff0625`](https://huggingface.co/datasets/ssdataanalysis/hebocrbench-v1-sources/tree/3d6dcbfedeeeb1234db84131abc92272abff0625).
+The mirror contains exactly the locked HTR, Pinkas and synthetic-diagnostic
+blobs required to reproduce the certified roots in public CI. Each blob is
+checked against its registry size and SHA-256 before use. It is not a copy of
+the whole benchmark corpus and contains no organizer maps or secret keys.
+HaZefira remains fetched from its separately locked original source.
+
 The v1 coverage is explicit:
 
 - five certified Modern Hebrew print roots covering Unicode/BiDi, line
