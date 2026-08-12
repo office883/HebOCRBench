@@ -19,6 +19,23 @@ ID mappings are not included.
 - Modern-suite fingerprint:
   `c68250ec4320485e243171b7d3f86c9b3b526f8ada317eda592cd7289f4df5ea`.
 
+## Public v1 baseline results
+
+**[Inspect the verified Tesseract 5.5.3 and Surya OCR 2 results at tag
+`v1.0.0`](https://huggingface.co/datasets/ssdataanalysis/hebocrbench-v1-results/tree/v1.0.0).**
+
+Both blind Modern runs cover all 34,267 inputs with zero runner or API
+failures, and both were admitted with recomputed metrics against the locked
+suite. Both are honestly reported as `non_conformant` because they failed
+mandatory BiDi gates, so neither receives a headline score. The compact public
+results pack also reports all 2,264 items in each model's five separate
+extension/diagnostic tracks. Those tracks are never blended or ranked. The pack
+contains aggregate metrics and exact score files, while omitting gold, raw
+predictions, images, organizer maps and key material.
+
+- public-results-pack fingerprint:
+  `1e67e1f92c899029f13e8a69387aa0561ada503fea32889eb0c105d57d2a6301`.
+
 The v1 coverage is explicit:
 
 - five certified Modern Hebrew print roots covering Unicode/BiDi, line

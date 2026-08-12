@@ -132,20 +132,48 @@ def evaluate_diacritics(reference: str, prediction: str) -> DiacriticEvaluation:
     result = DiacriticEvaluation(
         reference_bases=len(ref_bases),
         predicted_bases=len(pred_bases),
+        # These are corpus-support counts, not counts conditional on the OCR
+        # first recognizing the same base letter.  Keeping them outside the
+        # equal-base loop prevents a completely wrong-script prediction from
+        # turning a vocalized reference into a vacuous perfect mark score.
+        reference_marks=sum(len(marks) for _, marks in ref_clusters),
+        predicted_marks=sum(len(marks) for _, marks in pred_clusters),
     )
     category_alignments: dict[str, list[AlignmentResult]] = {
         category: [] for category in MARK_CATEGORIES
     }
 
+    def record_mark_alignment(ref_marks: tuple[str, ...], pred_marks: tuple[str, ...]) -> None:
+        mark_alignment = align_sequences(ref_marks, pred_marks)
+        result.correct_marks += mark_alignment.correct
+        result.substitutions += mark_alignment.substitutions
+        result.deletions += mark_alignment.deletions
+        result.insertions += mark_alignment.insertions
+
+        for category in MARK_CATEGORIES:
+            category_alignments[category].append(
+                align_sequences(
+                    [mark for mark in ref_marks if classify_hebrew_mark(mark) == category],
+                    [mark for mark in pred_marks if classify_hebrew_mark(mark) == category],
+                )
+            )
+
     for tag, i1, i2, j1, j2 in Levenshtein.opcodes(ref_bases, pred_bases):
         if tag != "equal":
+            # A mark can only be correct when it is attached to an aligned,
+            # identical Hebrew base.  Marks on deleted/substituted reference
+            # bases are therefore misses; marks on inserted/substituted
+            # prediction bases are false positives.  This also accounts for
+            # every mark when there are no equal base letters at all.
+            for _, ref_marks in ref_clusters[i1:i2]:
+                record_mark_alignment(ref_marks, ())
+            for _, pred_marks in pred_clusters[j1:j2]:
+                record_mark_alignment((), pred_marks)
             continue
         for ref_index, pred_index in zip(range(i1, i2), range(j1, j2), strict=True):
             _, ref_marks = ref_clusters[ref_index]
             _, pred_marks = pred_clusters[pred_index]
             result.base_pairs += 1
-            result.reference_marks += len(ref_marks)
-            result.predicted_marks += len(pred_marks)
             if not ref_marks:
                 result.unmarked_reference_bases += 1
                 if pred_marks:
@@ -153,19 +181,12 @@ def evaluate_diacritics(reference: str, prediction: str) -> DiacriticEvaluation:
             if ref_marks == pred_marks:
                 result.exact_mark_sets += 1
 
-            mark_alignment = align_sequences(ref_marks, pred_marks)
-            result.correct_marks += mark_alignment.correct
-            result.substitutions += mark_alignment.substitutions
-            result.deletions += mark_alignment.deletions
-            result.insertions += mark_alignment.insertions
+            record_mark_alignment(ref_marks, pred_marks)
 
-            for category in MARK_CATEGORIES:
-                category_alignments[category].append(
-                    align_sequences(
-                        [m for m in ref_marks if classify_hebrew_mark(m) == category],
-                        [m for m in pred_marks if classify_hebrew_mark(m) == category],
-                    )
-                )
+    if result.correct_marks + result.substitutions + result.deletions != result.reference_marks:
+        raise RuntimeError("diacritic alignment did not account for every reference mark")
+    if result.correct_marks + result.substitutions + result.insertions != result.predicted_marks:
+        raise RuntimeError("diacritic alignment did not account for every predicted mark")
 
     for category, alignments in category_alignments.items():
         merged = AlignmentResult(n_ref=0, n_pred=0)

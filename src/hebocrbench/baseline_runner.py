@@ -9,8 +9,9 @@ The runner is deliberately stricter than a convenience benchmark script:
   ``image.path``;
 * the recognition track operates on the already-derived line image and never
   consumes a gold polygon, line ID, or transcription;
-* the historical-press oracle-layout extension receives only layout IDs,
-  polygons and reading indexes in addition to ``page_id``/``image.path``;
+* Tesseract's historical-press oracle-layout extension receives only layout
+  IDs, polygons and reading indexes in addition to ``page_id``/``image.path``;
+  Surya OCR 2 receives the blind full-page envelope instead;
 * every page, including an engine failure, has a schema-valid prediction;
 * cache keys bind the exact image bytes, engine configuration and track; and
 * a headline score is attempted only for a complete (non-limited) run.
@@ -119,6 +120,7 @@ class BaselineSettings:
     surya_executable: str = "llama-cli"
     surya_server_executable: str = "llama-server"
     surya_max_tokens: int = 4096
+    surya_diagnostic_max_tokens: int | None = None
     surya_image_max_tokens: int = 2048
 
     def validate(self) -> None:
@@ -177,6 +179,13 @@ class BaselineSettings:
             )
         if self.surya_max_tokens <= 0 or self.surya_image_max_tokens <= 0:
             raise BaselineRunnerError("Surya OCR 2 token limits must be positive")
+        if self.surya_diagnostic_max_tokens is not None:
+            if self.surya_diagnostic_max_tokens <= 0:
+                raise BaselineRunnerError("surya_diagnostic_max_tokens must be positive")
+            if self.surya_diagnostic_max_tokens > self.surya_max_tokens:
+                raise BaselineRunnerError(
+                    "surya_diagnostic_max_tokens must not exceed surya_max_tokens"
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -472,8 +481,24 @@ def _oracle_layout_envelope(record: Mapping[str, Any]) -> dict[str, object]:
     return envelope
 
 
-def _model_envelope(track_id: str, record: Mapping[str, Any]) -> dict[str, object]:
-    if track_id == HISTORICAL_PRESS_TRACK:
+def _uses_oracle_layout(track_id: str, engine: Engine) -> bool:
+    return track_id == HISTORICAL_PRESS_TRACK and engine == "tesseract"
+
+
+def _input_mode(track_id: str, engine: Engine) -> str:
+    if _uses_oracle_layout(track_id, engine):
+        return "oracle_layout_line_crops"
+    if track_id in LINE_IMAGE_TRACKS:
+        return "blind_whole_line_image"
+    return "blind_full_page_image"
+
+
+def _model_envelope(
+    track_id: str,
+    record: Mapping[str, Any],
+    engine: Engine,
+) -> dict[str, object]:
+    if _uses_oracle_layout(track_id, engine):
         return _oracle_layout_envelope(record)
     return _envelope(record)
 
@@ -802,9 +827,10 @@ def _tesseract_oracle_layout_page(
 def _normalize_prediction(
     prediction: Mapping[str, Any],
     *,
+    track_id: str,
     page_id: str,
     model: Mapping[str, Any],
-    engine: Engine,
+    settings: BaselineSettings,
 ) -> Prediction:
     result = dict(prediction)
     if str(result.get("page_id", "")) != page_id:
@@ -814,12 +840,18 @@ def _normalize_prediction(
     adapter_model = result.get("model")
     merged_model = dict(adapter_model) if isinstance(adapter_model, Mapping) else {}
     merged_model.update(model)
+    oracle_layout = _uses_oracle_layout(track_id, settings.engine)
+    merged_model["input_mode"] = _input_mode(track_id, settings.engine)
+    merged_model["oracle_layout"] = oracle_layout
+    merged_model["gold_assistance"] = oracle_layout
+    if settings.engine == "surya2-llamacpp":
+        merged_model["max_tokens"] = _effective_surya_max_tokens(track_id, settings)
     result["model"] = merged_model
     result.setdefault("timing_ms", 0.0)
     result.setdefault("status", "ok")
     result.setdefault("failure", None)
     result.setdefault("api_failures", 1 if result["status"] == "failed" else 0)
-    if result["status"] == "failed" and engine == "apple-vision":
+    if result["status"] == "failed" and settings.engine == "apple-vision":
         failure = result.get("failure")
         if isinstance(failure, Mapping):
             normalized_failure = dict(failure)
@@ -891,7 +923,7 @@ def _default_predictor(
                 executable=settings.surya_executable,
                 backend=settings.surya_backend,
                 server_url=settings.surya_server_url,
-                max_tokens=settings.surya_max_tokens,
+                max_tokens=_effective_surya_max_tokens(track_id, settings),
                 image_max_tokens=settings.surya_image_max_tokens,
                 timeout_seconds=settings.timeout_seconds,
                 model_version=str(model["version"]),
@@ -942,6 +974,15 @@ def _cache_key(
             f"expected {declared_sha256}, got {actual_sha256}"
         )
     cache_settings = asdict(settings)
+    if (
+        settings.engine != "surya2-llamacpp"
+        or track_id not in SYNTHETIC_DIAGNOSTIC_TRACKS
+        or settings.surya_diagnostic_max_tokens is None
+    ):
+        # The optional override did not exist in the original cache contract.
+        # Omit it whenever it cannot affect this track so default-None and all
+        # non-diagnostic cache keys remain byte-for-byte backward compatible.
+        cache_settings.pop("surya_diagnostic_max_tokens", None)
     if settings.engine != "surya2-llamacpp" or settings.surya_backend != "server":
         # Server-only audit fields must not invalidate unrelated Tesseract,
         # Apple Vision, or llama-cli cache entries.
@@ -956,11 +997,14 @@ def _cache_key(
             "image_sha256": actual_sha256,
             "settings": cache_settings,
             "model": dict(model),
-            # Historical press is an oracle-layout track.  Its cache identity
-            # binds exactly the geometry/IDs visible to the model, never the
-            # held-out transcription or semantic gold fields.
+            # Only Tesseract's historical-press mode receives oracle layout.
+            # Its cache identity binds exactly the geometry/IDs visible to the
+            # model.  Surya's blind full-page cache depends only on the image,
+            # settings and hash-bound model identity above.
             "layout_projection": (
-                _layout_projection(record) if track_id == HISTORICAL_PRESS_TRACK else None
+                _layout_projection(record)
+                if _uses_oracle_layout(track_id, settings.engine)
+                else None
             ),
         }
     )
@@ -1025,9 +1069,13 @@ def run_baseline_track(
     settings.validate()
     if track_id not in SUPPORTED_BASELINE_TRACKS:
         raise BaselineRunnerError(f"unsupported baseline track: {track_id}")
-    if track_id == HISTORICAL_PRESS_TRACK and settings.engine != "tesseract":
+    if track_id == HISTORICAL_PRESS_TRACK and settings.engine not in {
+        "tesseract",
+        "surya2-llamacpp",
+    }:
         raise BaselineRunnerError(
-            "historical Hebrew press baseline requires Tesseract oracle-layout line crops"
+            "historical Hebrew press requires Tesseract oracle-layout crops or "
+            "blind full-page Surya OCR 2"
         )
     if max_pages is not None and max_pages <= 0:
         raise BaselineRunnerError("max_pages must be positive")
@@ -1067,14 +1115,15 @@ def run_baseline_track(
                 return (
                     _normalize_prediction(
                         prediction,
+                        track_id=track_id,
                         page_id=page_id,
                         model=model,
-                        engine=settings.engine,
+                        settings=settings,
                     ),
                     True,
                 )
         if prediction is None:
-            envelope = _model_envelope(track_id, record)
+            envelope = _model_envelope(track_id, record, settings.engine)
             if predictor is None:
                 raw = _default_predictor(track_id, envelope, root, settings, model)
             else:
@@ -1096,9 +1145,10 @@ def run_baseline_track(
                     )
             prediction = _normalize_prediction(
                 raw,
+                track_id=track_id,
                 page_id=page_id,
                 model=model,
-                engine=settings.engine,
+                settings=settings,
             )
             _write_cache(cache_path, key, track_id, prediction)
         return prediction, False
@@ -1149,7 +1199,37 @@ def _coerce_suite(value: str | Path | ModernSuiteSpec) -> ModernSuiteSpec:
 
 
 def _modern_input_mode(track_id: str) -> str:
-    return "blind_whole_line_image" if track_id == LINE_TRACK else "blind_full_page_image"
+    return _input_mode(track_id, "tesseract")
+
+
+def _extension_input_mode(track_id: str, engine: Engine) -> str:
+    if track_id not in SEPARATE_REPORT_TRACKS:
+        raise BaselineRunnerError(f"not a separate-report track: {track_id}")
+    return _input_mode(track_id, engine)
+
+
+def _effective_surya_max_tokens(track_id: str, settings: BaselineSettings) -> int:
+    """Return the generation cap that is evidence-relevant for one track."""
+
+    if (
+        settings.engine == "surya2-llamacpp"
+        and track_id in SYNTHETIC_DIAGNOSTIC_TRACKS
+        and settings.surya_diagnostic_max_tokens is not None
+    ):
+        return settings.surya_diagnostic_max_tokens
+    return settings.surya_max_tokens
+
+
+def _extension_adapter(track_id: str, settings: BaselineSettings) -> str:
+    if _uses_oracle_layout(track_id, settings.engine):
+        return "tesseract_oracle_layout_line_crops"
+    if settings.engine == "tesseract":
+        return "tesseract_line_image"
+    if settings.engine == "surya2-llamacpp" and settings.surya_backend == "server":
+        return "surya2_llamacpp_server_page_e2e"
+    if settings.engine == "surya2-llamacpp":
+        return "surya2_llamacpp_page_e2e"
+    raise BaselineRunnerError("separate extension baselines support only Tesseract or Surya OCR 2")
 
 
 def run_modern_baseline_suite(
@@ -1297,9 +1377,9 @@ def run_extension_baseline_suite(
     """
 
     settings.validate()
-    if settings.engine != "tesseract":
+    if settings.engine not in {"tesseract", "surya2-llamacpp"}:
         raise BaselineRunnerError(
-            "separate extension baselines require Tesseract whole-line recognition"
+            "separate extension baselines support only Tesseract or Surya OCR 2"
         )
     if workers <= 0:
         raise BaselineRunnerError("workers must be positive")
@@ -1351,10 +1431,13 @@ def run_extension_baseline_suite(
         reporting_class = (
             "synthetic_diagnostic" if synthetic_diagnostic else "separate_real_extension"
         )
-        input_mode = (
-            "oracle_layout_line_crops"
-            if track_id == HISTORICAL_PRESS_TRACK
-            else "blind_whole_line_image"
+        input_mode = _extension_input_mode(track_id, settings.engine)
+        oracle_layout = _uses_oracle_layout(track_id, settings.engine)
+        adapter = _extension_adapter(track_id, settings)
+        effective_surya_max_tokens = (
+            _effective_surya_max_tokens(track_id, settings)
+            if settings.engine == "surya2-llamacpp"
+            else None
         )
         run = evaluate_dataset(selected_gold, predictions, config=spec.benchmark_config)
         run.configuration.update(
@@ -1373,6 +1456,13 @@ def run_extension_baseline_suite(
                 "modern_headline_eligible": False,
                 "synthetic_diagnostic": synthetic_diagnostic,
                 "input_mode": input_mode,
+                "gold_assistance": oracle_layout,
+                "oracle_layout": oracle_layout,
+                **(
+                    {"surya_effective_max_tokens": effective_surya_max_tokens}
+                    if effective_surya_max_tokens is not None
+                    else {}
+                ),
             }
         )
         model_manifest = {
@@ -1380,11 +1470,13 @@ def run_extension_baseline_suite(
             "runner": "hebocrbench.baseline_runner",
             "runner_schema_version": RUNNER_SCHEMA_VERSION,
             "input_mode": input_mode,
-            "oracle_layout": track_id == HISTORICAL_PRESS_TRACK,
-            "adapter": (
-                "tesseract_oracle_layout_line_crops"
-                if track_id == HISTORICAL_PRESS_TRACK
-                else "tesseract_line_image"
+            "gold_assistance": oracle_layout,
+            "oracle_layout": oracle_layout,
+            "adapter": adapter,
+            **(
+                {"max_tokens": effective_surya_max_tokens}
+                if effective_surya_max_tokens is not None
+                else {}
             ),
         }
         report_dir = reports_root / track_id
@@ -1402,6 +1494,14 @@ def run_extension_baseline_suite(
             "modern_headline_eligible": False,
             "diagnostic_only": synthetic_diagnostic,
             "input_mode": input_mode,
+            "gold_assistance": oracle_layout,
+            "oracle_layout": oracle_layout,
+            "adapter": adapter,
+            **(
+                {"effective_max_tokens": effective_surya_max_tokens}
+                if effective_surya_max_tokens is not None
+                else {}
+            ),
             "line_gcer": run.metrics["recognition"]["line_gcer"],
             "line_cer": run.metrics["recognition"]["line_cer"],
             "line_wer": run.metrics["recognition"]["line_wer"],
