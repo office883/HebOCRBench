@@ -19,9 +19,10 @@ jobs:
         run: |
           set -euxo pipefail
           command -v ffmpeg >/dev/null 2>&1 || brew install ffmpeg
-          python3 -m pip install --quiet --upgrade pip
-          python3 -m pip install --quiet --upgrade 'yt-dlp[default,curl-cffi]'
-          yt-dlp --version
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --quiet --upgrade pip
+          .venv/bin/python -m pip install --quiet --upgrade 'yt-dlp[default,curl-cffi]'
+          .venv/bin/yt-dlp --version
           ffmpeg -version | head -n 3
           node --version
           {
@@ -34,13 +35,14 @@ jobs:
         run: |
           set -euxo pipefail
           URL='https://www.youtube.com/watch?v=HOW33afxE6g'
+          YTDLP="$PWD/.venv/bin/yt-dlp"
           rm -f reaction.*
           : > yt_dlp_macos.log
           success=0
           run_try() {
             label="$1"; shift
             echo "===== ATTEMPT: $label =====" | tee -a yt_dlp_macos.log
-            if yt-dlp -v --no-playlist --newline \
+            if "$YTDLP" -v --no-playlist --newline \
               --retries 12 --fragment-retries 12 --concurrent-fragments 4 \
               --js-runtimes node --remote-components ejs:github \
               --impersonate chrome \
@@ -56,7 +58,8 @@ jobs:
           run_try 'macOS default' || \
           run_try 'macOS web_safari' --extractor-args 'youtube:player_client=web_safari' || \
           run_try 'macOS ios' --extractor-args 'youtube:player_client=ios' || \
-          run_try 'macOS mweb' --extractor-args 'youtube:player_client=mweb' || true
+          run_try 'macOS mweb' --extractor-args 'youtube:player_client=mweb' || \
+          run_try 'macOS tv_embedded' --extractor-args 'youtube:player_client=tv_embedded' || true
           test "$success" -eq 1
           INPUT="$(python3 - <<'PY'
           from pathlib import Path
