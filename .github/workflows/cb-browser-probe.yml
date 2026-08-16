@@ -1,0 +1,246 @@
+name: Temporary Christina Block Chromium playback probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/cb-browser-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Install Playwright Chromium
+        run: |
+          set -euxo pipefail
+          python -m pip install --quiet --upgrade playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Probe watch and embed players
+        run: |
+          set -euxo pipefail
+          cat > /tmp/probe_youtube.py <<'PY'
+          from __future__ import annotations
+
+          import asyncio
+          import json
+          import pathlib
+          import re
+          import traceback
+          from urllib.parse import urlparse
+
+          from playwright.async_api import async_playwright
+
+          VIDEO_ID = "HOW33afxE6g"
+          URLS = [
+              f"https://www.youtube.com/embed/{VIDEO_ID}?autoplay=1&playsinline=1&controls=1",
+              f"https://www.youtube-nocookie.com/embed/{VIDEO_ID}?autoplay=1&playsinline=1&controls=1",
+              f"https://www.youtube.com/watch?v={VIDEO_ID}",
+          ]
+          OUT = pathlib.Path("browser_probe")
+          OUT.mkdir(exist_ok=True)
+          report: dict[str, object] = {"video_id": VIDEO_ID, "pages": []}
+
+          def summarize_url(url: str) -> dict[str, object]:
+              p = urlparse(url)
+              return {
+                  "scheme": p.scheme,
+                  "host": p.netloc,
+                  "path": p.path,
+                  "query_length": len(p.query),
+              }
+
+          async def probe_one(browser, url: str, index: int) -> dict[str, object]:
+              rec: dict[str, object] = {"url": url}
+              media_requests: list[dict[str, object]] = []
+              responses: list[dict[str, object]] = []
+              console: list[str] = []
+              page = await browser.new_page(
+                  viewport={"width": 1280, "height": 720},
+                  user_agent=(
+                      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+                  ),
+                  locale="en-US",
+                  timezone_id="Europe/Berlin",
+              )
+
+              async def on_request(request):
+                  u = request.url
+                  if any(marker in u for marker in ("googlevideo.com", "videoplayback", ".m3u8", ".mpd")):
+                      media_requests.append({
+                          "url": u,
+                          "summary": summarize_url(u),
+                          "method": request.method,
+                          "resource_type": request.resource_type,
+                          "headers": await request.all_headers(),
+                      })
+
+              async def on_response(response):
+                  u = response.url
+                  if any(marker in u for marker in ("youtubei/v1/player", "googlevideo.com", "videoplayback")):
+                      try:
+                          headers = await response.all_headers()
+                      except Exception:
+                          headers = {}
+                      responses.append({
+                          "url": u,
+                          "summary": summarize_url(u),
+                          "status": response.status,
+                          "headers": headers,
+                      })
+
+              page.on("request", on_request)
+              page.on("response", on_response)
+              page.on("console", lambda msg: console.append(f"{msg.type}: {msg.text}"))
+
+              try:
+                  await page.goto(url, wait_until="domcontentloaded", timeout=120_000)
+                  await page.wait_for_timeout(12_000)
+
+                  # Consent dialogs, overlays, and play buttons can differ by locale.
+                  for selector in [
+                      "button:has-text('Accept all')",
+                      "button:has-text('I agree')",
+                      "button:has-text('Reject all')",
+                      "button.ytp-large-play-button",
+                      ".ytp-large-play-button",
+                      "video",
+                  ]:
+                      try:
+                          locator = page.locator(selector).first
+                          if await locator.count() and await locator.is_visible(timeout=1500):
+                              await locator.click(timeout=3000, force=True)
+                              await page.wait_for_timeout(4000)
+                      except Exception:
+                          pass
+
+                  # Force play through the media element when it exists.
+                  try:
+                      play_result = await page.evaluate(
+                          """
+                          async () => {
+                            const v = document.querySelector('video');
+                            if (!v) return {found:false};
+                            v.muted = true;
+                            let error = null;
+                            try { await v.play(); } catch (e) { error = String(e); }
+                            await new Promise(r => setTimeout(r, 8000));
+                            return {
+                              found:true,
+                              currentTime:v.currentTime,
+                              duration:v.duration,
+                              paused:v.paused,
+                              ended:v.ended,
+                              readyState:v.readyState,
+                              networkState:v.networkState,
+                              currentSrc:v.currentSrc,
+                              src:v.src,
+                              videoWidth:v.videoWidth,
+                              videoHeight:v.videoHeight,
+                              error:v.error ? {code:v.error.code, message:v.error.message} : error,
+                            };
+                          }
+                          """
+                      )
+                  except Exception:
+                      play_result = {"evaluation_error": traceback.format_exc()}
+
+                  await page.wait_for_timeout(6000)
+                  title = await page.title()
+                  body_text = (await page.locator("body").inner_text(timeout=10_000))[:20_000]
+                  html = await page.content()
+                  (OUT / f"page_{index}.html").write_text(html, encoding="utf-8", errors="replace")
+                  await page.screenshot(path=str(OUT / f"page_{index}.png"), full_page=False)
+
+                  player_data = await page.evaluate(
+                      """
+                      () => {
+                        const candidates = {};
+                        for (const key of ['ytInitialPlayerResponse','ytInitialData','ytplayer','ytcfg']) {
+                          try {
+                            const value = window[key];
+                            if (value !== undefined) {
+                              candidates[key] = JSON.parse(JSON.stringify(value));
+                            }
+                          } catch (e) {
+                            candidates[key] = {serializationError:String(e)};
+                          }
+                        }
+                        const scripts = [...document.scripts].map(s => s.textContent || '');
+                        candidates.scriptSnippets = scripts
+                          .filter(s => /streamingData|playabilityStatus|videoDetails/.test(s))
+                          .slice(0, 20)
+                          .map(s => s.slice(0, 200000));
+                        return candidates;
+                      }
+                      """
+                  )
+                  (OUT / f"player_data_{index}.json").write_text(
+                      json.dumps(player_data, ensure_ascii=False, indent=2, default=str),
+                      encoding="utf-8",
+                  )
+
+                  rec.update({
+                      "title": title,
+                      "final_url": page.url,
+                      "body_text": body_text,
+                      "play_result": play_result,
+                      "media_request_count": len(media_requests),
+                      "media_requests": media_requests,
+                      "interesting_responses": responses,
+                      "console": console[-500:],
+                      "player_top_keys": list(player_data.keys()),
+                  })
+              except Exception:
+                  rec["error"] = traceback.format_exc()
+                  try:
+                      await page.screenshot(path=str(OUT / f"page_{index}_error.png"), full_page=False)
+                  except Exception:
+                      pass
+              finally:
+                  await page.close()
+              return rec
+
+          async def main() -> None:
+              async with async_playwright() as p:
+                  browser = await p.chromium.launch(
+                      headless=True,
+                      args=[
+                          "--autoplay-policy=no-user-gesture-required",
+                          "--disable-blink-features=AutomationControlled",
+                          "--disable-dev-shm-usage",
+                          "--no-sandbox",
+                      ],
+                  )
+                  for index, url in enumerate(URLS):
+                      rec = await probe_one(browser, url, index)
+                      report["pages"].append(rec)
+                      print("\n=== PAGE", index, "===")
+                      print(json.dumps(rec, ensure_ascii=False, indent=2, default=str)[:80_000])
+                  await browser.close()
+
+              (OUT / "report.json").write_text(
+                  json.dumps(report, ensure_ascii=False, indent=2, default=str),
+                  encoding="utf-8",
+              )
+
+          asyncio.run(main())
+          PY
+          python /tmp/probe_youtube.py 2>&1 | tee browser_probe.log
+
+      - name: Upload browser probe
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cb-chromium-playback-probe
+          path: |
+            browser_probe/
+            browser_probe.log
+          retention-days: 1
+          if-no-files-found: warn
