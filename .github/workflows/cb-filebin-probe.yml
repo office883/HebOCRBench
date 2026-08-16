@@ -1,4 +1,4 @@
-name: Temporary Christina Block Filebin status
+name: Temporary Christina Block yt-dlp diagnostics relay
 
 on:
   push:
@@ -11,26 +11,31 @@ permissions:
   contents: read
 
 jobs:
-  status:
+  diagnostics:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
-      - name: Inspect remote status, error, and final file
+      - name: Wait for diagnostic report
         run: |
           set -euo pipefail
-          BASE='https://filebin.net/ricivzzx58ygduk3'
-          echo '--- STATUS ---'
-          if curl -fsSL --connect-timeout 15 --max-time 60 "$BASE/cb_middle_a7f4c9_status.txt" -o status.txt; then
-            cat status.txt
-          else
-            echo 'status file not present'
-          fi
-          echo '--- ERROR ---'
-          if curl -fsSL --connect-timeout 15 --max-time 60 "$BASE/cb_middle_a7f4c9_error.txt" -o error.txt; then
-            cat error.txt
-            exit 2
-          else
-            echo 'error file not present'
-          fi
-          echo '--- FINAL HEADERS ---'
-          curl -sSIL --connect-timeout 15 --max-time 60 "$BASE/cb_middle_a7f4c9.mp4" || true
+          URL='https://filebin.net/ricivzzx58ygduk3/cb_diag_a7f4c9_b1.txt'
+          found=0
+          for attempt in $(seq 1 90); do
+            if curl -fL --connect-timeout 15 --max-time 180 "$URL" -o yt_dlp_diagnostic.txt 2>/dev/null; then
+              found=1
+              break
+            fi
+            echo "Waiting for diagnostic report ($attempt/90)..."
+            sleep 10
+          done
+          test "$found" -eq 1 || { echo 'Diagnostic report did not arrive'; exit 1; }
+          wc -c yt_dlp_diagnostic.txt
+          sha256sum yt_dlp_diagnostic.txt
+          cat yt_dlp_diagnostic.txt
+      - name: Upload diagnostic artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cb-yt-dlp-diagnostic-a7f4c9-b1
+          path: yt_dlp_diagnostic.txt
+          retention-days: 1
+          if-no-files-found: error
