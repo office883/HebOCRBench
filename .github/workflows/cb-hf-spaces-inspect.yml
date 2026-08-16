@@ -1,0 +1,109 @@
+name: Temporary Christina Block HF Spaces inspect
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/cb-hf-spaces-inspect.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Inspect Space status, source, and Gradio APIs
+        run: |
+          set -euxo pipefail
+          python -m pip install --quiet --upgrade huggingface_hub gradio_client requests
+          cat > /tmp/inspect_spaces.py <<'PY'
+          from __future__ import annotations
+          import contextlib
+          import io
+          import json
+          import os
+          import pathlib
+          import re
+          import traceback
+          from huggingface_hub import HfApi, hf_hub_download
+          from gradio_client import Client
+
+          SPACES = [
+              'prasanthntu/youtube-downloader',
+              'OpenVideo/Youtube-Downloader',
+              'Digiquanta/YouTube4K',
+              'harishvijayasarangan/yt_dlp_downloader',
+          ]
+          api = HfApi()
+          root = pathlib.Path('hf_spaces_inspect')
+          root.mkdir(exist_ok=True)
+          report = {}
+
+          for repo_id in SPACES:
+              rec = {'repo_id': repo_id}
+              safe = repo_id.replace('/', '__')
+              outdir = root / safe
+              outdir.mkdir(exist_ok=True)
+              try:
+                  info = api.space_info(repo_id, files_metadata=True)
+                  runtime = getattr(info, 'runtime', None)
+                  rec['sdk'] = getattr(info, 'sdk', None)
+                  rec['sha'] = getattr(info, 'sha', None)
+                  rec['private'] = getattr(info, 'private', None)
+                  rec['runtime'] = runtime if isinstance(runtime, dict) else getattr(runtime, '__dict__', str(runtime))
+                  files = [s.rfilename for s in (getattr(info, 'siblings', None) or [])]
+                  rec['files'] = files
+                  candidates = [
+                      f for f in files
+                      if pathlib.PurePosixPath(f).name.lower() in {
+                          'app.py','main.py','webui.py','server.py','requirements.txt','packages.txt','readme.md','package.json','index.js','app.js'
+                      }
+                      or f.lower().endswith(('.py','.js','.ts')) and len(files) <= 60
+                  ]
+                  source_manifest = []
+                  for path in candidates[:30]:
+                      try:
+                          local = hf_hub_download(repo_id=repo_id, repo_type='space', filename=path)
+                          data = pathlib.Path(local).read_bytes()
+                          if len(data) <= 500_000:
+                              dest = outdir / path.replace('/','__')
+                              dest.write_bytes(data)
+                              source_manifest.append({'path':path,'bytes':len(data),'saved':str(dest)})
+                      except Exception as e:
+                          source_manifest.append({'path':path,'error':f'{type(e).__name__}: {e}'})
+                  rec['source_manifest'] = source_manifest
+              except Exception:
+                  rec['hub_error'] = traceback.format_exc()
+
+              if rec.get('sdk') == 'gradio':
+                  try:
+                      capture = io.StringIO()
+                      with contextlib.redirect_stdout(capture), contextlib.redirect_stderr(capture):
+                          client = Client(repo_id, verbose=False)
+                          api_dict = client.view_api(return_format='dict')
+                      rec['client_log'] = capture.getvalue()
+                      rec['api'] = api_dict
+                      rec['src'] = getattr(client, 'src', None)
+                      rec['space_id'] = getattr(client, 'space_id', None)
+                  except Exception:
+                      rec['gradio_error'] = traceback.format_exc()
+              report[repo_id] = rec
+              print('\n===', repo_id, '===')
+              print(json.dumps(rec, ensure_ascii=False, indent=2, default=str))
+
+          (root/'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str), encoding='utf-8')
+          PY
+          python /tmp/inspect_spaces.py | tee hf_spaces_inspect.log
+
+      - name: Upload inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: cb-hf-spaces-inspect
+          path: |
+            hf_spaces_inspect/
+            hf_spaces_inspect.log
+          retention-days: 1
+          if-no-files-found: error
