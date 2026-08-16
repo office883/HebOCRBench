@@ -1,0 +1,188 @@
+name: Temporary Christina Block alt frontend test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/cb-alt-frontends-test.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Test Invidious and Piped APIs plus stream bytes
+        run: |
+          set -euxo pipefail
+          python -m pip install --quiet requests
+          cat > /tmp/test_sources.py <<'PY'
+          from __future__ import annotations
+          import json, re, sys, time
+          from urllib.parse import urlparse
+          import requests
+
+          VIDEO_ID = 'HOW33afxE6g'
+          UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36'
+          S = requests.Session()
+          S.headers.update({'User-Agent': UA, 'Accept': '*/*'})
+          out = {'video_id': VIDEO_ID, 'piped': [], 'invidious': []}
+
+          PIPED = [
+            'https://pipedapi.kavin.rocks',
+            'https://pipedapi.leptons.xyz',
+            'https://pipedapi.nosebs.ru',
+            'https://pipedapi-libre.kavin.rocks',
+            'https://piped-api.privacy.com.de',
+            'https://pipedapi.adminforge.de',
+            'https://api.piped.yt',
+            'https://pipedapi.drgns.space',
+            'https://pipedapi.owo.si',
+            'https://pipedapi.ducks.party',
+            'https://piped-api.codespace.cz',
+            'https://pipedapi.reallyaweso.me',
+            'https://api.piped.private.coffee',
+            'https://pipedapi.darkness.services',
+            'https://pipedapi.orangenet.cc',
+            'https://pipedapi.wireway.ch',
+          ]
+          INVIDIOUS = [
+            'https://inv.nadeko.net',
+            'https://invidious.nerdvpn.de',
+            'https://yt.chocolatemoo53.com',
+          ]
+
+          def compact_url(url: str) -> dict:
+              p = urlparse(url)
+              return {'scheme': p.scheme, 'host': p.netloc, 'path': p.path[:120], 'query_len': len(p.query)}
+
+          def byte_test(url: str, timeout: int = 40) -> dict:
+              result = {'url': compact_url(url)}
+              try:
+                  r = S.get(url, headers={'Range': 'bytes=0-65535'}, stream=True, allow_redirects=True, timeout=(15, timeout))
+                  chunk = next(r.iter_content(65536), b'')
+                  result.update({
+                      'status': r.status_code,
+                      'final_url': compact_url(r.url),
+                      'content_type': r.headers.get('content-type'),
+                      'content_length': r.headers.get('content-length'),
+                      'content_range': r.headers.get('content-range'),
+                      'bytes_read': len(chunk),
+                      'magic_hex': chunk[:24].hex(),
+                  })
+              except Exception as e:
+                  result['error'] = f'{type(e).__name__}: {e}'
+              return result
+
+          for base in PIPED:
+              rec = {'base': base}
+              try:
+                  started = time.time()
+                  r = S.get(f'{base}/streams/{VIDEO_ID}', timeout=(12, 45))
+                  rec['api_status'] = r.status_code
+                  rec['api_seconds'] = round(time.time()-started, 3)
+                  rec['api_type'] = r.headers.get('content-type')
+                  rec['body_prefix'] = r.text[:300]
+                  if r.status_code == 200:
+                      data = r.json()
+                      rec['title'] = data.get('title')
+                      rec['duration'] = data.get('duration')
+                      rec['hls'] = compact_url(data['hls']) if data.get('hls') else None
+                      vids = data.get('videoStreams') or []
+                      auds = data.get('audioStreams') or []
+                      rec['video_count'] = len(vids)
+                      rec['audio_count'] = len(auds)
+                      rec['videos'] = [
+                          {k:v.get(k) for k in ('quality','format','codec','fps','videoOnly','bitrate','contentLength')}
+                          | {'url': compact_url(v.get('url',''))}
+                          for v in vids[:20]
+                      ]
+                      rec['audios'] = [
+                          {k:a.get(k) for k in ('quality','format','codec','bitrate','contentLength')}
+                          | {'url': compact_url(a.get('url',''))}
+                          for a in auds[:12]
+                      ]
+                      def qnum(x):
+                          m=re.search(r'(\d+)', str(x.get('quality','')))
+                          return int(m.group(1)) if m else 0
+                      progressive=[v for v in vids if not v.get('videoOnly') and v.get('url')]
+                      video_only=[v for v in vids if v.get('videoOnly') and v.get('url')]
+                      chosen_v=max(progressive or video_only, key=lambda v:(qnum(v)<=720, min(qnum(v),720), v.get('bitrate') or 0), default=None)
+                      chosen_a=max([a for a in auds if a.get('url')], key=lambda a:a.get('bitrate') or 0, default=None)
+                      if chosen_v:
+                          rec['chosen_video']={k:chosen_v.get(k) for k in ('quality','format','codec','fps','videoOnly','bitrate','contentLength')}
+                          rec['video_byte_test']=byte_test(chosen_v['url'])
+                      if chosen_a:
+                          rec['chosen_audio']={k:chosen_a.get(k) for k in ('quality','format','codec','bitrate','contentLength')}
+                          rec['audio_byte_test']=byte_test(chosen_a['url'])
+                      if data.get('hls'):
+                          rec['hls_test']=byte_test(data['hls'])
+              except Exception as e:
+                  rec['error'] = f'{type(e).__name__}: {e}'
+              out['piped'].append(rec)
+              print('PIPED', base, rec.get('api_status'), rec.get('title'), rec.get('error'), flush=True)
+
+          for base in INVIDIOUS:
+              rec = {'base': base}
+              try:
+                  started=time.time()
+                  r=S.get(f'{base}/api/v1/videos/{VIDEO_ID}', timeout=(12,60))
+                  rec['api_status']=r.status_code
+                  rec['api_seconds']=round(time.time()-started,3)
+                  rec['api_type']=r.headers.get('content-type')
+                  rec['body_prefix']=r.text[:300]
+                  if r.status_code==200:
+                      data=r.json()
+                      rec['title']=data.get('title')
+                      rec['duration']=data.get('lengthSeconds')
+                      formats=data.get('formatStreams') or []
+                      adaptive=data.get('adaptiveFormats') or []
+                      rec['format_count']=len(formats)
+                      rec['adaptive_count']=len(adaptive)
+                      rec['formats']=[
+                          {k:f.get(k) for k in ('itag','quality','qualityLabel','type','container','encoding','fps','bitrate','clen')}
+                          | {'url': compact_url(f.get('url',''))}
+                          for f in formats[:20]
+                      ]
+                      rec['adaptive']=[
+                          {k:f.get(k) for k in ('itag','quality','qualityLabel','type','container','encoding','fps','bitrate','clen')}
+                          | {'url': compact_url(f.get('url',''))}
+                          for f in adaptive[:30]
+                      ]
+                      candidates=formats or adaptive
+                      chosen=None
+                      for f in sorted(candidates,key=lambda x:(int(re.sub(r'\D','',str(x.get('qualityLabel') or x.get('quality') or '0')) or 0),x.get('bitrate') or 0),reverse=True):
+                          q=int(re.sub(r'\D','',str(f.get('qualityLabel') or f.get('quality') or '0')) or 0)
+                          if q<=720 and f.get('url'):
+                              chosen=f; break
+                      if chosen:
+                          rec['chosen']={k:chosen.get(k) for k in ('itag','quality','qualityLabel','type','container','encoding','fps','bitrate','clen')}
+                          rec['direct_byte_test']=byte_test(chosen['url'])
+                          itag=chosen.get('itag')
+                          if itag:
+                              local=f'{base}/latest_version?id={VIDEO_ID}&itag={itag}&local=true'
+                              rec['local_proxy_url']=compact_url(local)
+                              rec['local_proxy_test']=byte_test(local,60)
+              except Exception as e:
+                  rec['error']=f'{type(e).__name__}: {e}'
+              out['invidious'].append(rec)
+              print('INVIDIOUS',base,rec.get('api_status'),rec.get('title'),rec.get('error'),flush=True)
+
+          with open('alt_frontends_report.json','w',encoding='utf-8') as f:
+              json.dump(out,f,ensure_ascii=False,indent=2)
+          print(json.dumps(out,ensure_ascii=False,indent=2))
+          PY
+          python /tmp/test_sources.py | tee alt_frontends_report.log
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cb-alt-frontends-report
+          path: |
+            alt_frontends_report.json
+            alt_frontends_report.log
+          retention-days: 1
+          if-no-files-found: error
