@@ -1,0 +1,193 @@
+name: Temporary Christina Block robust browser stream build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/cb-browser-stream-build2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Install Chromium and FFmpeg
+        run: |
+          set -euxo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg ca-certificates
+          python -m pip install --quiet --upgrade playwright requests
+          python -m playwright install --with-deps chromium
+
+      - name: Capture stream URLs with bounded synchronous listeners
+        run: |
+          set -euxo pipefail
+          cat > /tmp/capture.py <<'PY'
+          from __future__ import annotations
+          import asyncio, json, pathlib, traceback
+          from urllib.parse import parse_qs, unquote, urlencode, urlparse, urlunparse
+          from playwright.async_api import async_playwright
+
+          VIDEO_ID='HOW33afxE6g'
+          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'
+          TARGETS=[
+            f'https://www.youtube.com/embed/{VIDEO_ID}?autoplay=1&mute=1&playsinline=1&controls=1',
+            f'https://www.youtube-nocookie.com/embed/{VIDEO_ID}?autoplay=1&mute=1&playsinline=1&controls=1',
+            f'https://www.youtube.com/watch?v={VIDEO_ID}&autoplay=1',
+          ]
+          OUT=pathlib.Path('bounded_browser'); OUT.mkdir(exist_ok=True)
+          report={'targets':[]}
+          selected=None
+
+          def info(url):
+            p=urlparse(url); q=parse_qs(p.query)
+            mime=unquote((q.get('mime') or [''])[0])
+            return {'url':url,'mime':mime,'itag':(q.get('itag') or [''])[0],'clen':(q.get('clen') or [''])[0]}
+
+          def normalize(url):
+            p=urlparse(url)
+            pairs=[]
+            for key,vals in parse_qs(p.query,keep_blank_values=True).items():
+              if key in {'range','rn','rbuf','ump','alr','sq'}:
+                continue
+              for value in vals: pairs.append((key,value))
+            return urlunparse((p.scheme,p.netloc,p.path,p.params,urlencode(pairs,doseq=True),p.fragment))
+
+          async def main():
+            nonlocal_holder={'selected':None}
+            async with async_playwright() as pw:
+              browser=await pw.chromium.launch(headless=True,args=['--autoplay-policy=no-user-gesture-required','--disable-blink-features=AutomationControlled','--disable-dev-shm-usage','--no-sandbox'])
+              for index,target in enumerate(TARGETS):
+                urls=[]; rec={'target':target}
+                context=await browser.new_context(viewport={'width':1280,'height':720},user_agent=UA,locale='de-DE',timezone_id='Europe/Berlin',extra_http_headers={'Accept-Language':'de-DE,de;q=0.9,en;q=0.7'})
+                page=await context.new_page()
+                def request_listener(req):
+                  u=req.url
+                  if 'googlevideo.com' in u and ('videoplayback' in u or '/initplayback' in u):
+                    if u not in urls: urls.append(u)
+                page.on('request',request_listener)
+                try:
+                  await page.goto(target,wait_until='domcontentloaded',timeout=45000)
+                  await page.wait_for_timeout(5000)
+                  for selector in ["button:has-text('Accept all')","button:has-text('I agree')","button:has-text('Alle akzeptieren')",'.ytp-large-play-button']:
+                    try:
+                      loc=page.locator(selector).first
+                      if await loc.count() and await loc.is_visible(timeout=700):
+                        await loc.click(force=True,timeout=2000)
+                    except Exception: pass
+                  try:
+                    rec['play']=await page.evaluate("""async()=>{const v=document.querySelector('video');if(!v)return{found:false};v.muted=true;let e=null;try{await v.play()}catch(x){e=String(x)};return{found:true,error:e,currentTime:v.currentTime,duration:v.duration,paused:v.paused,readyState:v.readyState,currentSrc:v.currentSrc}}""")
+                  except Exception: rec['play_error']=traceback.format_exc()
+                  await page.wait_for_timeout(20000)
+                  try:
+                    rec['video']=await page.evaluate("""()=>{const v=document.querySelector('video');return v?{currentTime:v.currentTime,duration:v.duration,paused:v.paused,readyState:v.readyState,currentSrc:v.currentSrc,videoWidth:v.videoWidth,videoHeight:v.videoHeight,error:v.error?{code:v.error.code,message:v.error.message}:null}:{found:false}}""")
+                  except Exception: rec['video_error']=traceback.format_exc()
+                  rec['title']=await page.title()
+                  rec['body']=(await page.locator('body').inner_text(timeout=5000))[:8000]
+                  await page.screenshot(path=str(OUT/f'target_{index}.png'))
+                except Exception:
+                  rec['error']=traceback.format_exc()
+                rec['media']=[info(u) for u in urls]
+                report['targets'].append(rec)
+                print('TARGET',index,'title=',rec.get('title'),'video=',rec.get('video'),'media=',len(urls),flush=True)
+                videos=[info(u) for u in urls if info(u)['mime'].startswith('video/')]
+                audios=[info(u) for u in urls if info(u)['mime'].startswith('audio/')]
+                if videos and audios:
+                  nonlocal_holder['selected']={'kind':'separate','video':{**videos[-1],'url':normalize(videos[-1]['url'])},'audio':{**audios[-1],'url':normalize(audios[-1]['url'])},'referer':target,'ua':UA}
+                  await context.close(); break
+                await context.close()
+              await browser.close()
+            report['selected']=nonlocal_holder['selected']
+            (OUT/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+            if not nonlocal_holder['selected']:
+              raise SystemExit('No separate video/audio Googlevideo streams captured')
+            pathlib.Path('selected_streams.json').write_text(json.dumps(nonlocal_holder['selected'],ensure_ascii=False,indent=2),encoding='utf-8')
+
+          asyncio.run(main())
+          PY
+          python /tmp/capture.py 2>&1 | tee bounded_capture.log
+          cat selected_streams.json
+
+      - name: Download and merge captured streams
+        run: |
+          set -euxo pipefail
+          cat > /tmp/download.py <<'PY'
+          import json,pathlib,requests,subprocess,traceback
+          s=json.load(open('selected_streams.json'))
+          headers={'User-Agent':s['ua'],'Referer':s['referer'],'Accept':'*/*'}
+          def download(url,path):
+            with requests.get(url,headers=headers,stream=True,allow_redirects=True,timeout=(30,3600)) as r:
+              print(path,r.status_code,r.headers.get('content-type'),r.headers.get('content-length'),flush=True)
+              r.raise_for_status(); n=0
+              with open(path,'wb') as f:
+                for c in r.iter_content(1024*1024):
+                  if c: f.write(c); n+=len(c)
+              print(path,'bytes',n,flush=True)
+            if pathlib.Path(path).stat().st_size<1000000: raise RuntimeError(f'{path} too small')
+          download(s['video']['url'],'video.bin')
+          download(s['audio']['url'],'audio.bin')
+          subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-i','video.bin','-i','audio.bin','-map','0:v:0','-map','1:a:0','-c','copy','reaction_source.mkv'],check=True,timeout=1800)
+          PY
+          python /tmp/download.py 2>&1 | tee bounded_download.log
+          ffprobe -v error -show_entries format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate,sample_rate,channels -of json reaction_source.mkv | tee source_probe.json
+          python - <<'PY'
+          import json
+          d=json.load(open('source_probe.json')); duration=float(d['format']['duration']); streams=d.get('streams',[])
+          assert 2545<=duration<=2565,duration
+          assert any(x.get('codec_type')=='video' for x in streams)
+          assert any(x.get('codec_type')=='audio' for x in streams)
+          print('SOURCE OK',duration)
+          PY
+
+      - name: Render the exact clean middle
+        run: |
+          set -euxo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          segments=[(400,418),(424,451),(467,470),(473,494),(518,553),(558,648),(691,696),(708,710),(726,734),(735,761),(772,799),(821,825),(826,871),(888,945),(985,998),(1005,1098),(1123,1126),(1139,1141),(1150,1164),(1167,1180),(1195,1214),(1235,1238),(1254,1270),(1291,1303),(1312,1314),(1325,1335),(1340,1344),(1346,1431),(1487,1503),(1509,1542),(1549,1575),(1584,1627),(1657,1661),(1671,1726),(1734,1783),(1799,1813),(1836,1859),(1883,2021)]
+          assert len(segments)==38 and sum(b-a for a,b in segments)==1058
+          Path('segments.tsv').write_text('\n'.join(f'{i:02d}\t{a}\t{b}' for i,(a,b) in enumerate(segments)))
+          Path('middle_manifest.txt').write_text('segments=38\nexpected_duration_seconds=1058\n'+'\n'.join(f'{i+1:02d}: {a}-{b} ({b-a}s)' for i,(a,b) in enumerate(segments))+'\n')
+          PY
+          mkdir -p rendered_segments; : > concat.txt
+          while IFS=$'\t' read -r idx start end; do
+            duration=$((end-start))
+            ffmpeg -hide_banner -loglevel error -y -ss "$start" -i reaction_source.mkv -t "$duration" \
+              -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p" \
+              -af "aresample=48000:async=1:first_pts=0,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo" \
+              -c:v libx264 -preset veryfast -crf 18 -profile:v high -level 4.1 -c:a aac -b:a 192k -ar 48000 -ac 2 "rendered_segments/seg_${idx}.mp4"
+            printf "file '%s'\n" "$PWD/rendered_segments/seg_${idx}.mp4" >> concat.txt
+          done < segments.tsv
+          ffmpeg -hide_banner -loglevel error -y -f concat -safe 0 -i concat.txt -c copy -movflags +faststart middle_clean.mp4
+          ffprobe -v error -show_entries format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate,sample_rate,channels -of json middle_clean.mp4 | tee middle_probe.json
+          python - <<'PY'
+          import json
+          d=json.load(open('middle_probe.json')); duration=float(d['format']['duration'])
+          assert 1057.4<=duration<=1059.0,duration
+          print('MIDDLE OK',duration)
+          PY
+          ffmpeg -v error -i middle_clean.mp4 -f null -
+          sha256sum middle_clean.mp4 | tee middle_clean.sha256
+
+      - name: Upload clean middle and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: christina-block-robust-browser-middle
+          path: |
+            middle_clean.mp4
+            middle_clean.sha256
+            middle_probe.json
+            middle_manifest.txt
+            source_probe.json
+            selected_streams.json
+            bounded_browser/
+            bounded_capture.log
+            bounded_download.log
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: warn
