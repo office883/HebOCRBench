@@ -1,4 +1,4 @@
-name: Temporary Christina Block Filebin probe
+name: Temporary Christina Block Filebin status
 
 on:
   push:
@@ -11,22 +11,26 @@ permissions:
   contents: read
 
 jobs:
-  probe:
+  status:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Fetch deterministic probe
+      - name: Inspect remote status, error, and final file
         run: |
-          set -euxo pipefail
-          curl -fL --connect-timeout 15 --max-time 60 \
-            'https://filebin.net/ricivzzx58ygduk3/probe2.txt' \
-            -o probe2.txt
-          wc -c probe2.txt
-          sha256sum probe2.txt
-          cat probe2.txt
-      - name: Upload probe artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cb-filebin-probe
-          path: probe2.txt
-          retention-days: 1
+          set -euo pipefail
+          BASE='https://filebin.net/ricivzzx58ygduk3'
+          echo '--- STATUS ---'
+          if curl -fsSL --connect-timeout 15 --max-time 60 "$BASE/cb_middle_a7f4c9_status.txt" -o status.txt; then
+            cat status.txt
+          else
+            echo 'status file not present'
+          fi
+          echo '--- ERROR ---'
+          if curl -fsSL --connect-timeout 15 --max-time 60 "$BASE/cb_middle_a7f4c9_error.txt" -o error.txt; then
+            cat error.txt
+            exit 2
+          else
+            echo 'error file not present'
+          fi
+          echo '--- FINAL HEADERS ---'
+          curl -sSIL --connect-timeout 15 --max-time 60 "$BASE/cb_middle_a7f4c9.mp4" || true
