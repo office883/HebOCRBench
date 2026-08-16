@@ -1,0 +1,32 @@
+name: Temporary Christina Block Filebin probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/cb-filebin-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch deterministic probe
+        run: |
+          set -euxo pipefail
+          curl -fL --connect-timeout 15 --max-time 60 \
+            'https://filebin.net/ricivzzx58ygduk3/probe2.txt' \
+            -o probe2.txt
+          wc -c probe2.txt
+          sha256sum probe2.txt
+          cat probe2.txt
+      - name: Upload probe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cb-filebin-probe
+          path: probe2.txt
+          retention-days: 1
