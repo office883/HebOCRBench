@@ -1,0 +1,121 @@
+name: Temporary Christina Block middle build
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/cb-middle-build.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-middle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Install downloader
+        run: |
+          set -euxo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade "yt-dlp[default,curl-cffi]"
+          yt-dlp --version
+          node --version
+          ffmpeg -version | head -n 3
+
+      - name: Download reaction video at up to 720p
+        run: |
+          set -euxo pipefail
+          yt-dlp \
+            --no-playlist \
+            --newline \
+            --js-runtimes node \
+            --remote-components ejs:github \
+            --extractor-args "youtube:player_client=android_vr,web_safari" \
+            -f "bv*[height<=720]+ba/b[height<=720]" \
+            --merge-output-format mkv \
+            -o "reaction.%(ext)s" \
+            "https://www.youtube.com/watch?v=HOW33afxE6g"
+          INPUT="$(find . -maxdepth 1 -type f -name 'reaction.*' | head -n 1)"
+          test -n "$INPUT"
+          echo "INPUT=$INPUT" >> "$GITHUB_ENV"
+          ffprobe -v error -show_entries format=duration:stream=index,codec_name,codec_type,width,height,r_frame_rate,sample_rate,channels -of json "$INPUT"
+
+      - name: Build exact keep-list filter
+        run: |
+          python - <<'PY'
+          segments = [
+              (400, 418), (424, 451), (467, 470), (473, 494),
+              (518, 553), (558, 648), (691, 696), (708, 710),
+              (726, 734), (735, 761), (772, 799), (821, 825),
+              (826, 871), (888, 945), (985, 998), (1005, 1098),
+              (1123, 1126), (1139, 1141), (1150, 1164), (1167, 1180),
+              (1195, 1214), (1235, 1238), (1254, 1270), (1291, 1303),
+              (1312, 1314), (1325, 1335), (1340, 1344), (1346, 1431),
+              (1487, 1503), (1509, 1542), (1549, 1575), (1584, 1627),
+              (1657, 1661), (1671, 1726), (1734, 1783), (1799, 1813),
+              (1836, 1859), (1883, 2021),
+          ]
+          expected = sum(end - start for start, end in segments)
+          assert expected == 1058, expected
+          chains = []
+          for i, (start, end) in enumerate(segments):
+              chains.append(
+                  f"[0:v:0]trim=start={start}:end={end},setpts=PTS-STARTPTS,"
+                  "scale=1280:720:force_original_aspect_ratio=decrease,"
+                  "pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=25,format=yuv420p"
+                  f"[v{i}]"
+              )
+              chains.append(
+                  f"[0:a:0]atrim=start={start}:end={end},asetpts=PTS-STARTPTS,"
+                  "aresample=48000,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
+                  f"[a{i}]"
+              )
+          concat_inputs = "".join(f"[v{i}][a{i}]" for i in range(len(segments)))
+          chains.append(f"{concat_inputs}concat=n={len(segments)}:v=1:a=1[vout][aout]")
+          with open("filter_complex.txt", "w", encoding="utf-8") as f:
+              f.write(";\n".join(chains))
+          with open("middle_manifest.txt", "w", encoding="utf-8") as f:
+              f.write(f"segments={len(segments)}\nexpected_duration_seconds={expected}\n")
+              for i, (start, end) in enumerate(segments, 1):
+                  f.write(f"{i:02d}: {start}-{end} ({end-start}s)\n")
+          print(f"Built {len(segments)} segments; expected duration {expected}s")
+          PY
+
+      - name: Render clean middle section
+        run: |
+          set -euxo pipefail
+          ffmpeg -hide_banner -y \
+            -i "$INPUT" \
+            -filter_complex_script filter_complex.txt \
+            -map "[vout]" -map "[aout]" \
+            -c:v libx264 -preset medium -crf 18 -profile:v high -level 4.1 \
+            -c:a aac -b:a 192k -ar 48000 -ac 2 \
+            -movflags +faststart \
+            middle_clean.mp4
+          ffprobe -v error -show_entries format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,sample_rate,channels -of json middle_clean.mp4 | tee middle_probe.json
+          python - <<'PY'
+          import json
+          with open('middle_probe.json', encoding='utf-8') as f:
+              data = json.load(f)
+          duration = float(data['format']['duration'])
+          if not 1057.7 <= duration <= 1058.3:
+              raise SystemExit(f'Unexpected duration: {duration}')
+          print(f'Verified duration: {duration:.3f}s')
+          PY
+          sha256sum middle_clean.mp4 | tee middle_clean.sha256
+
+      - name: Upload clean middle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: christina-block-middle-clean
+          path: |
+            middle_clean.mp4
+            middle_manifest.txt
+            middle_probe.json
+            middle_clean.sha256
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
