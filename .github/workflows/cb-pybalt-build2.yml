@@ -1,0 +1,211 @@
+name: Temporary Christina Block Cobalt middle build v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/cb-pybalt-build2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-middle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Install pinned Cobalt client and media tools
+        run: |
+          set -euxo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg git
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet \
+            python-dotenv==1.1.0 pytube==15.0.0 pyyaml==6.0.2 rich==14.0.0 \
+            wcwidth==0.2.13 yarl==1.19.0 aiohttp==3.11.16 aiofiles==24.1.0 \
+            prompt_toolkit==3.0.50 click==8.2.0 fastapi requests uvicorn setuptools
+          python -m pip install --quiet --no-deps \
+            'git+https://github.com/nichind/pybalt.git@af656b636046f36722ffecc1782f994a10783b79'
+          python - <<'PY'
+          import pybalt
+          print('pybalt', pybalt.VERSION)
+          PY
+          ffmpeg -version | head -n 3
+
+      - name: Download reaction through rotating Cobalt instances
+        run: |
+          set -euxo pipefail
+          mkdir -p cobalt_download
+          cat > /tmp/cobalt_download.py <<'PY'
+          from __future__ import annotations
+          import asyncio, json, pathlib, shutil, traceback
+          from pybalt import manager
+
+          URL='https://www.youtube.com/watch?v=HOW33afxE6g'
+          OUT=pathlib.Path('cobalt_download')
+          OUT.mkdir(exist_ok=True)
+          report={'url':URL}
+
+          def obj(v):
+              if isinstance(v,(str,int,float,bool,type(None),list,dict)):
+                  return v
+              return str(v)
+
+          async def main():
+              instances=await manager.fetch_instances(min_score=0,filter_online=True)
+              report['instances']=[]
+              for i in instances:
+                  row={
+                      'api_url':obj(getattr(i,'api_url',None)),
+                      'score':obj(getattr(i,'score',None)),
+                      'trust':obj(getattr(i,'trust',None)),
+                      'services':obj(getattr(i,'services',None)),
+                  }
+                  report['instances'].append(row)
+              print(f'Fetched {len(instances)} public Cobalt instances',flush=True)
+              for row in report['instances'][:80]: print(row,flush=True)
+
+              result=await manager.download(
+                  url=URL,
+                  filenameStyle='basic',
+                  videoQuality='720',
+                  downloadMode='auto',
+                  youtubeVideoCodec='h264',
+                  alwaysProxy=True,
+                  disableMetadata=False,
+                  only_path=False,
+                  remux=False,
+                  min_file_size=10_000_000,
+                  max_retries=40,
+                  folder_path=OUT,
+              )
+              report['raw_result']=repr(result)
+              print('DOWNLOAD RESULT',repr(result),flush=True)
+
+              path=None; error=None
+              candidate=result
+              if isinstance(candidate,list) and len(candidate)==1:
+                  candidate=candidate[0]
+              if isinstance(candidate,(tuple,list)) and len(candidate)>=3:
+                  path=candidate[1]; error=candidate[2]
+              elif isinstance(candidate,(str,pathlib.Path)):
+                  path=candidate
+              if error is not None:
+                  raise RuntimeError(f'Cobalt download returned an error: {error!r}')
+              if isinstance(path,list):
+                  paths=[pathlib.Path(p) for p in path]
+                  paths=[p for p in paths if p.exists()]
+                  path=max(paths,key=lambda p:p.stat().st_size) if paths else None
+              if path is None:
+                  found=[p for p in OUT.rglob('*') if p.is_file()]
+                  path=max(found,key=lambda p:p.stat().st_size) if found else None
+              if path is None:
+                  raise RuntimeError(f'Cobalt did not return a file: {result!r}')
+              path=pathlib.Path(path)
+              if not path.exists(): raise FileNotFoundError(path)
+              if path.stat().st_size<10_000_000:
+                  raise RuntimeError(f'Download too small: {path.stat().st_size}')
+              dest=pathlib.Path('reaction_source'+(path.suffix or '.bin'))
+              shutil.copy2(path,dest)
+              report.update(source=str(path),copied_to=str(dest),bytes=dest.stat().st_size)
+
+          try:
+              asyncio.run(main())
+          except Exception:
+              report['error']=traceback.format_exc()
+              print(report['error'],flush=True)
+              raise
+          finally:
+              pathlib.Path('cobalt_result.json').write_text(
+                  json.dumps(report,ensure_ascii=False,indent=2,default=str),encoding='utf-8')
+          PY
+          python /tmp/cobalt_download.py 2>&1 | tee cobalt_download.log
+          INPUT="$(find . -maxdepth 1 -type f -name 'reaction_source*' | head -n 1)"
+          test -n "$INPUT"
+          echo "INPUT=$INPUT" >> "$GITHUB_ENV"
+          ls -lh "$INPUT" cobalt_result.json cobalt_download.log
+
+      - name: Validate reaction source
+        run: |
+          set -euxo pipefail
+          ffprobe -v error \
+            -show_entries format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate,sample_rate,channels \
+            -of json "$INPUT" | tee source_probe.json
+          python - <<'PY'
+          import json
+          data=json.load(open('source_probe.json',encoding='utf-8'))
+          duration=float(data['format']['duration'])
+          streams=data.get('streams',[])
+          assert 2545 <= duration <= 2565, f'Unexpected source duration: {duration}'
+          assert any(s.get('codec_type')=='video' for s in streams), 'No video stream'
+          assert any(s.get('codec_type')=='audio' for s in streams), 'No audio stream'
+          print(f'Validated source duration: {duration:.3f}s')
+          PY
+          ffmpeg -v error -i "$INPUT" -t 15 -f null -
+
+      - name: Render exact clean middle in accurate segments
+        run: |
+          set -euxo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          segments=[
+            (400,418),(424,451),(467,470),(473,494),
+            (518,553),(558,648),(691,696),(708,710),
+            (726,734),(735,761),(772,799),(821,825),
+            (826,871),(888,945),(985,998),(1005,1098),
+            (1123,1126),(1139,1141),(1150,1164),(1167,1180),
+            (1195,1214),(1235,1238),(1254,1270),(1291,1303),
+            (1312,1314),(1325,1335),(1340,1344),(1346,1431),
+            (1487,1503),(1509,1542),(1549,1575),(1584,1627),
+            (1657,1661),(1671,1726),(1734,1783),(1799,1813),
+            (1836,1859),(1883,2021),
+          ]
+          assert sum(b-a for a,b in segments)==1058
+          Path('segments.tsv').write_text('\n'.join(f'{i:02d}\t{a}\t{b}' for i,(a,b) in enumerate(segments)),encoding='utf-8')
+          Path('middle_manifest.txt').write_text(
+            'segments=38\nexpected_duration_seconds=1058\n' +
+            '\n'.join(f'{i+1:02d}: {a}-{b} ({b-a}s)' for i,(a,b) in enumerate(segments))+'\n',encoding='utf-8')
+          PY
+          mkdir -p rendered_segments
+          while IFS=$'\t' read -r idx start end; do
+            duration=$((end-start))
+            ffmpeg -hide_banner -loglevel error -y \
+              -ss "$start" -i "$INPUT" -t "$duration" \
+              -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p" \
+              -af "aresample=48000:async=1:first_pts=0,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo" \
+              -c:v libx264 -preset veryfast -crf 18 -profile:v high -level 4.1 \
+              -c:a aac -b:a 192k -ar 48000 -ac 2 \
+              "rendered_segments/seg_${idx}.mp4"
+            printf "file '%s'\n" "$PWD/rendered_segments/seg_${idx}.mp4" >> concat.txt
+          done < segments.tsv
+          ffmpeg -hide_banner -loglevel error -y -f concat -safe 0 -i concat.txt -c copy -movflags +faststart middle_clean.mp4
+          ffprobe -v error \
+            -show_entries format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate,sample_rate,channels \
+            -of json middle_clean.mp4 | tee middle_probe.json
+          python - <<'PY'
+          import json
+          d=json.load(open('middle_probe.json',encoding='utf-8'))
+          duration=float(d['format']['duration'])
+          assert 1057.4 <= duration <= 1059.0, duration
+          print(f'Validated clean middle: {duration:.3f}s')
+          PY
+          ffmpeg -v error -i middle_clean.mp4 -f null -
+          sha256sum middle_clean.mp4 | tee middle_clean.sha256
+
+      - name: Upload build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: christina-block-cobalt-middle-build-v2
+          path: |
+            middle_clean.mp4
+            middle_clean.sha256
+            middle_probe.json
+            middle_manifest.txt
+            source_probe.json
+            cobalt_result.json
+            cobalt_download.log
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: warn
