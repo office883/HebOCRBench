@@ -19,7 +19,7 @@ jobs:
         run: |
           set -euxo pipefail
           python -m pip install --quiet --upgrade huggingface_hub gradio_client
-          cat > /tmp/inspect.py <<'PY'
+          cat > /tmp/space_probe.py <<'PY'
           from __future__ import annotations
           import contextlib, io, json, pathlib, traceback
           from huggingface_hub import HfApi, hf_hub_download
@@ -70,9 +70,10 @@ jobs:
             print(json.dumps(rec,ensure_ascii=False,indent=2,default=str))
           (root/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2,default=str),encoding='utf-8')
           PY
-          python /tmp/inspect.py | tee alternate_spaces.log
+          python /tmp/space_probe.py | tee alternate_spaces.log
 
       - name: Upload inspection
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cb-alternate-spaces-inspect
@@ -80,4 +81,4 @@ jobs:
             alternate_spaces/
             alternate_spaces.log
           retention-days: 1
-          if-no-files-found: error
+          if-no-files-found: warn
