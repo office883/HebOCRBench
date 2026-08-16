@@ -1,0 +1,106 @@
+name: Temporary Christina Block SPIEGEL source probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/cb-spiegel-source-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Inspect SPIEGEL pages and media manifests
+        run: |
+          set -euxo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          python -m pip install --quiet --upgrade 'yt-dlp[default,curl-cffi]' requests beautifulsoup4
+          cat > /tmp/spiegel_probe.py <<'PY'
+          from __future__ import annotations
+          import json, pathlib, re, subprocess, traceback
+          from urllib.parse import urljoin, urlparse
+          import requests
+          from bs4 import BeautifulSoup
+
+          pages=[
+            'https://tv.spiegel.de/program/2025-07-21/die-akte-block-kinderentfuhrung-wie-aus-einem-agententhriller.html',
+            'https://www.spiegel.de/panorama/justiz/block-prozess-so-lief-die-entfuehrung-der-kinder-von-christina-block-a-2965d7a4-99f6-4dcd-9ce0-f3462e7a2343',
+          ]
+          s=requests.Session(); s.headers.update({'User-Agent':'Mozilla/5.0 Chrome/140 Safari/537.36'})
+          root=pathlib.Path('spiegel_probe'); root.mkdir(exist_ok=True)
+          report={'pages':[],'yt_dlp':[]}
+          markers=['m3u8','mp4','dash','mpd','video','player','youtube','y-NQIT1Oppw','HOW33afxE6g','brightcove','jwplayer','kaltura','akamai','cloudfront','manifest','stream']
+
+          discovered=set(pages)
+          for pi,page in enumerate(pages):
+            rec={'url':page}
+            try:
+              r=s.get(page,timeout=(20,180),allow_redirects=True)
+              rec.update(status=r.status_code,final_url=r.url,content_type=r.headers.get('content-type'),bytes=len(r.content))
+              html=r.text
+              (root/f'page_{pi}.html').write_text(html,encoding='utf-8',errors='replace')
+              rec['markers']={m:html.lower().find(m.lower()) for m in markers}
+              soup=BeautifulSoup(html,'html.parser')
+              urls=[]
+              for tag in soup.find_all(True):
+                for attr in ('src','href','content','data-src','data-url','data-video','data-video-url'):
+                  v=tag.get(attr)
+                  if isinstance(v,str) and v:
+                    u=urljoin(r.url,v)
+                    if u.startswith('http'): urls.append(u)
+              for pattern in [
+                r'https?:\\?/\\?/[^"\'<>\\ ]+',
+                r'https?://[^"\'<> ]+',
+              ]:
+                for match in re.findall(pattern,html):
+                  urls.append(match.replace('\\/','/'))
+              urls=list(dict.fromkeys(urls))
+              rec['interesting_urls']=[u for u in urls if any(x in u.lower() for x in ('video','media','m3u8','mp4','mpd','youtube','manifest','player','cdn'))][:500]
+              for u in rec['interesting_urls']: discovered.add(u)
+              contexts=[]
+              low=html.lower()
+              for m in markers:
+                start=0
+                for _ in range(8):
+                  pos=low.find(m.lower(),start)
+                  if pos<0: break
+                  contexts.append(f'\n===== {m} @ {pos} =====\n'+html[max(0,pos-1500):pos+5000])
+                  start=pos+len(m)
+              (root/f'page_{pi}_contexts.txt').write_text('\n'.join(contexts),encoding='utf-8',errors='replace')
+            except Exception:
+              rec['error']=traceback.format_exc()
+            report['pages'].append(rec)
+
+          # yt-dlp can understand many embedded video hosts even when the HTML is opaque.
+          for i,url in enumerate(list(discovered)[:200]):
+            if i>=2 and not any(x in url.lower() for x in ('video','player','youtube','m3u8','mpd')):
+              continue
+            cmd=['yt-dlp','-v','--no-playlist','--js-runtimes','node','--remote-components','ejs:github','-F',url]
+            try:
+              p=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=240)
+              rec={'url':url,'returncode':p.returncode,'output':p.stdout[:80000]}
+            except Exception:
+              rec={'url':url,'error':traceback.format_exc()}
+            report['yt_dlp'].append(rec)
+            print('\nYTDLP',url,'\n',rec.get('output',rec.get('error',''))[:5000],flush=True)
+
+          (root/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+          python /tmp/spiegel_probe.py 2>&1 | tee spiegel_probe.log
+
+      - name: Upload probe
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cb-spiegel-source-probe
+          path: |
+            spiegel_probe/
+            spiegel_probe.log
+          retention-days: 1
+          if-no-files-found: warn
