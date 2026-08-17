@@ -1,0 +1,56 @@
+name: Apply exact Ruff formatting
+
+on:
+  push:
+    branches:
+      - agent/fix-bidi-conformance-20260817
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-bidi-ruff-format
+  cancel-in-progress: false
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact staging branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply and verify Ruff 0.15.22 formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check 'ruff==0.15.22'
+          python -m ruff format \
+            src/hebocrbench/evaluator.py \
+            src/hebocrbench/unicode_utils.py \
+            tests/test_bidi_conformance_policy.py \
+            tests/test_modern_score.py
+          python -m ruff check .
+          python -m ruff format --check .
+          git diff --check
+
+      - name: Commit formatting only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/apply-ruff-format.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/hebocrbench/evaluator.py \
+            src/hebocrbench/unicode_utils.py \
+            tests/test_bidi_conformance_policy.py \
+            tests/test_modern_score.py
+          git commit -m "style: apply Ruff formatting"
+          git fetch origin main
+          test "$(git diff --name-only origin/main...HEAD | wc -l | tr -d ' ')" = "23"
+          test -z "$(git status --porcelain)"
+          git push origin HEAD:agent/fix-bidi-conformance-20260817
