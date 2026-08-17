@@ -27,9 +27,7 @@ def _policy(**overrides):
 
 def test_ordinary_recognition_errors_lower_quality_without_blocking_rank(gold_page):
     prediction = perfect_prediction(gold_page)
-    prediction["regions"][0]["lines"][0]["text"] = (
-        "בשנת 2062 הופעלה גירסה OCR-v2.1."
-    )
+    prediction["regions"][0]["lines"][0]["text"] = "בשנת 2062 הופעלה גירסה OCR-v2.1."
 
     run = evaluate_dataset([gold_page], [prediction], config=_policy())
     result = run.metrics["conformance"]
@@ -44,9 +42,7 @@ def test_ordinary_recognition_errors_lower_quality_without_blocking_rank(gold_pa
 
 def test_legacy_policy_can_still_gate_quality_metrics(gold_page):
     prediction = perfect_prediction(gold_page)
-    prediction["regions"][0]["lines"][0]["text"] = (
-        "בשנת 2062 הופעלה גירסה OCR-v2.1."
-    )
+    prediction["regions"][0]["lines"][0]["text"] = "בשנת 2062 הופעלה גירסה OCR-v2.1."
 
     run = evaluate_dataset(
         [gold_page],
@@ -105,13 +101,12 @@ def test_balanced_isolates_are_allowed_but_unbalanced_controls_fail(gold_page):
     unbalanced["regions"][0]["lines"][0]["text"] = (
         "\u2067" + unbalanced["regions"][0]["lines"][0]["text"]
     )
-    unbalanced_result = evaluate_dataset(
-        [gold_page], [unbalanced], config=_policy()
-    ).metrics["conformance"]
+    unbalanced_result = evaluate_dataset([gold_page], [unbalanced], config=_policy()).metrics[
+        "conformance"
+    ]
     assert unbalanced_result["status"] == "non_conformant"
     assert any(
-        "unbalanced_bidi_controls" in item
-        for item in unbalanced_result["hard_failed_checks"]
+        "unbalanced_bidi_controls" in item for item in unbalanced_result["hard_failed_checks"]
     )
 
 

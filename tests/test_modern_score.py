@@ -221,9 +221,7 @@ def test_rankable_score_preserves_bidi_quality_warnings():
     reports = _reports(suite)
     reports[0] = deepcopy(reports[0])
     reports[0]["metrics"]["conformance"]["quality_status"] = "below_targets"
-    reports[0]["metrics"]["conformance"]["quality_failed_checks"] = [
-        "numeric_exact_rate>=0.995"
-    ]
+    reports[0]["metrics"]["conformance"]["quality_failed_checks"] = ["numeric_exact_rate>=0.995"]
 
     result = combine_modern_track_reports(reports, suite_lock=suite)
 

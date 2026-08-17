@@ -222,9 +222,7 @@ def bidi_hygiene(text: str) -> dict[str, object]:
         "bidi_override_positions": bidi_override_positions,
         "bidi_isolate_count": len(bidi_isolate_positions),
         "bidi_isolate_positions": bidi_isolate_positions,
-        "unsafe_bidi_control_count": (
-            len(bidi_embedding_positions) + len(bidi_override_positions)
-        ),
+        "unsafe_bidi_control_count": (len(bidi_embedding_positions) + len(bidi_override_positions)),
         "bidi_control_names": dict(names),
         "unbalanced_embeddings": unbalanced_embeddings,
         "unbalanced_isolates": unbalanced_isolates,

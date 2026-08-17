@@ -371,9 +371,7 @@ def evaluate_page(
             reference,
             predicted,
             min_visual_order_gain=effective_config.conformance.min_visual_order_gain,
-            max_visual_order_error_rate=(
-                effective_config.conformance.max_visual_order_error_rate
-            ),
+            max_visual_order_error_rate=(effective_config.conformance.max_visual_order_error_rate),
         )
         ltr = ltr_run_metrics(reference, predicted)
         brackets = bracket_metrics(reference, predicted)
@@ -716,13 +714,11 @@ def _conformance_gate(pages: Sequence[PageEvaluation], config: BenchmarkConfig) 
         int(page.metrics["bidi"]["visual_order_failure_count"]) for page in diagnostic
     )
     visual_candidates = sum(
-        int(page.metrics["bidi"]["visual_order_reference_line_count"])
-        for page in diagnostic
+        int(page.metrics["bidi"]["visual_order_reference_line_count"]) for page in diagnostic
     )
     controls = sum(int(page.metrics["bidi"]["bidi_control_count"]) for page in diagnostic)
     unsafe_controls = sum(
-        int(page.metrics["bidi"].get("unsafe_bidi_control_count", 0))
-        for page in diagnostic
+        int(page.metrics["bidi"].get("unsafe_bidi_control_count", 0)) for page in diagnostic
     )
     unbalanced = sum(
         int(page.metrics["bidi"]["unbalanced_embeddings"])
@@ -733,9 +729,7 @@ def _conformance_gate(pages: Sequence[PageEvaluation], config: BenchmarkConfig) 
     ltr_rate = _safe_rate(bidi_ok, bidi_ref)
     numeric_rate = _safe_rate(numeric_ok, numeric_ref)
     bracket_rate = _safe_rate(bracket_ok, bracket_ref)
-    visual_failure_rate = (
-        0.0 if visual_candidates == 0 else visual_failures / visual_candidates
-    )
+    visual_failure_rate = 0.0 if visual_candidates == 0 else visual_failures / visual_candidates
 
     hard_checks = {
         f"visual_order_failure_count<={threshold.max_visual_order_failure_count}": (
