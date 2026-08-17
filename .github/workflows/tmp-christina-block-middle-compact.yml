@@ -1,0 +1,85 @@
+name: Temporary Christina Block compact middle
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/tmp-christina-block-middle-compact.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  compact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Install FFmpeg
+        run: |
+          set -euxo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Download verified middle from prior run
+        uses: actions/download-artifact@v4
+        with:
+          name: christina-block-clean-middle
+          path: input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 32021332144
+
+      - name: Compact without changing timing or dimensions
+        run: |
+          set -euxo pipefail
+          test -f input/middle_clean.mp4
+          ffprobe -v error \
+            -show_entries format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate,sample_rate,channels \
+            -of json input/middle_clean.mp4 | tee input_probe.json
+          ffmpeg -hide_banner -y -i input/middle_clean.mp4 \
+            -map 0:v:0 -map 0:a:0 \
+            -c:v libx264 -preset ultrafast \
+            -b:v 1550k -maxrate 2000k -bufsize 3100k \
+            -g 50 -keyint_min 25 -sc_threshold 0 \
+            -profile:v high -level 4.1 -pix_fmt yuv420p -r 25 \
+            -c:a aac -b:a 160k -ar 48000 -ac 2 \
+            -movflags +faststart middle_clean_compact.mp4
+          ffprobe -v error \
+            -show_entries format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate,sample_rate,channels \
+            -of json middle_clean_compact.mp4 | tee middle_compact_probe.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.load(open('middle_compact_probe.json', encoding='utf-8'))
+          duration = float(data['format']['duration'])
+          size = int(data['format']['size'])
+          streams = data.get('streams', [])
+          assert 1057.0 <= duration <= 1060.5, duration
+          assert size < 268_000_000, size
+          assert any(s.get('codec_type') == 'video' and s.get('width') == 1280 and s.get('height') == 720 for s in streams)
+          assert any(s.get('codec_type') == 'audio' and s.get('sample_rate') == '48000' for s in streams)
+          Path('middle_compact_manifest.txt').write_text(
+              f'segments=38\nduration_seconds={duration:.6f}\nsize_bytes={size}\n',
+              encoding='utf-8',
+          )
+          print(f'Compact middle validated: {duration:.3f}s, {size} bytes')
+          PY
+          ffmpeg -v error -i middle_clean_compact.mp4 -t 30 -f null -
+          sha256sum middle_clean_compact.mp4 | tee middle_clean_compact.sha256
+          ls -lh middle_clean_compact.mp4
+
+      - name: Upload compact middle
+        uses: actions/upload-artifact@v4
+        with:
+          name: christina-block-clean-middle-compact
+          path: |
+            middle_clean_compact.mp4
+            middle_clean_compact.sha256
+            middle_compact_probe.json
+            middle_compact_manifest.txt
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
