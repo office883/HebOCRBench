@@ -1,0 +1,40 @@
+name: Export pinned APKEditor merger
+
+on:
+  push:
+    branches:
+      - chatgpt/me-sanitizer-transfer-20260817
+    paths:
+      - '.github/workflows/export-apkeditor.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download and verify APKEditor 1.4.9
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/apkeditor"
+          URL='https://github.com/REAndroid/APKEditor/releases/download/V1.4.9/APKEditor-1.4.9.jar'
+          SHA='a9cd40df818845456be6d696de6110c89edf4b0a0580cb83438ed6b25a366e67'
+          curl -fsSL --retry 5 --retry-all-errors "$URL" -o "$RUNNER_TEMP/apkeditor/APKEditor-1.4.9.jar"
+          echo "$SHA  $RUNNER_TEMP/apkeditor/APKEditor-1.4.9.jar" | sha256sum -c -
+          java -jar "$RUNNER_TEMP/apkeditor/APKEditor-1.4.9.jar" -version
+          printf 'version=1.4.9\nsha256=%s\n' "$SHA" > "$RUNNER_TEMP/apkeditor/VERIFIED.txt"
+
+      - name: Upload verified merger
+        uses: actions/upload-artifact@v4
+        with:
+          name: APKEditor-1.4.9-verified
+          path: ${{ runner.temp }}/apkeditor
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
