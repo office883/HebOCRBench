@@ -367,7 +367,14 @@ def evaluate_page(
         diacritics = evaluate_diacritics(reference, predicted)
         diacritic_evaluations.append(diacritics)
 
-        visual = visual_order_diagnostic(reference, predicted)
+        visual = visual_order_diagnostic(
+            reference,
+            predicted,
+            min_visual_order_gain=effective_config.conformance.min_visual_order_gain,
+            max_visual_order_error_rate=(
+                effective_config.conformance.max_visual_order_error_rate
+            ),
+        )
         ltr = ltr_run_metrics(reference, predicted)
         brackets = bracket_metrics(reference, predicted)
         words = pairwise_word_order_accuracy(reference, predicted)
@@ -387,6 +394,11 @@ def evaluate_page(
         word_correct += int(words["concordant_pairs"])
         for key in (
             "bidi_control_count",
+            "bidi_mark_count",
+            "bidi_embedding_count",
+            "bidi_override_count",
+            "bidi_isolate_count",
+            "unsafe_bidi_control_count",
             "unbalanced_embeddings",
             "unbalanced_isolates",
             "zero_width_count",
@@ -513,6 +525,7 @@ def evaluate_page(
         "page_alignment": page_text_result.to_dict(),
     }
     bidi = {
+        "visual_order_reference_line_count": bidi_candidate_lines,
         "visual_order_failure_count": visual_suspected,
         "visual_order_failure_rate": visual_suspected / max(1, bidi_candidate_lines),
         "ltr_run_reference_count": ltr_ref,
@@ -681,8 +694,16 @@ def _conformance_gate(pages: Sequence[PageEvaluation], config: BenchmarkConfig) 
     if not diagnostic:
         return {
             "status": "not_evaluated",
+            "quality_status": "not_evaluated",
             "reason": f"No pages in track={threshold.diagnostic_track}",
             "failed_checks": [],
+            "hard_failed_checks": [],
+            "quality_failed_checks": [],
+            "quality_metrics_gated": threshold.gate_quality_metrics,
+            "all_bidi_controls_gated": threshold.gate_all_bidi_controls,
+            "checks": {},
+            "hard_checks": {},
+            "quality_checks": {},
         }
     group = _aggregate_page_group(diagnostic)
     bidi_ref = sum(int(page.metrics["bidi"]["ltr_run_reference_count"]) for page in diagnostic)
@@ -694,7 +715,15 @@ def _conformance_gate(pages: Sequence[PageEvaluation], config: BenchmarkConfig) 
     visual_failures = sum(
         int(page.metrics["bidi"]["visual_order_failure_count"]) for page in diagnostic
     )
+    visual_candidates = sum(
+        int(page.metrics["bidi"]["visual_order_reference_line_count"])
+        for page in diagnostic
+    )
     controls = sum(int(page.metrics["bidi"]["bidi_control_count"]) for page in diagnostic)
+    unsafe_controls = sum(
+        int(page.metrics["bidi"].get("unsafe_bidi_control_count", 0))
+        for page in diagnostic
+    )
     unbalanced = sum(
         int(page.metrics["bidi"]["unbalanced_embeddings"])
         + int(page.metrics["bidi"]["unbalanced_isolates"])
@@ -704,7 +733,22 @@ def _conformance_gate(pages: Sequence[PageEvaluation], config: BenchmarkConfig) 
     ltr_rate = _safe_rate(bidi_ok, bidi_ref)
     numeric_rate = _safe_rate(numeric_ok, numeric_ref)
     bracket_rate = _safe_rate(bracket_ok, bracket_ref)
-    checks = {
+    visual_failure_rate = (
+        0.0 if visual_candidates == 0 else visual_failures / visual_candidates
+    )
+
+    hard_checks = {
+        f"visual_order_failure_count<={threshold.max_visual_order_failure_count}": (
+            visual_failures <= threshold.max_visual_order_failure_count
+        ),
+        f"unsafe_bidi_control_count<={threshold.max_unsafe_bidi_control_count}": (
+            unsafe_controls <= threshold.max_unsafe_bidi_control_count
+        ),
+        f"unbalanced_bidi_controls<={threshold.max_unbalanced_bidi_controls}": (
+            unbalanced <= threshold.max_unbalanced_bidi_controls
+        ),
+    }
+    quality_checks = {
         f"strict_line_exact_rate>={threshold.min_exact_line_rate}": (
             group["line_exact_rate"] >= threshold.min_exact_line_rate
         ),
@@ -717,37 +761,56 @@ def _conformance_gate(pages: Sequence[PageEvaluation], config: BenchmarkConfig) 
         f"bracket_exact_rate>={threshold.min_bracket_exact_rate}": (
             bracket_rate >= threshold.min_bracket_exact_rate
         ),
-        f"visual_order_failure_count<={threshold.max_visual_order_failure_count}": (
-            visual_failures <= threshold.max_visual_order_failure_count
-        ),
         f"bidi_control_count<={threshold.max_bidi_control_count}": (
             controls <= threshold.max_bidi_control_count
         ),
-        f"unbalanced_bidi_controls<={threshold.max_unbalanced_bidi_controls}": (
-            unbalanced <= threshold.max_unbalanced_bidi_controls
-        ),
     }
-    failed = [name for name, passed in checks.items() if not passed]
+    if threshold.gate_all_bidi_controls:
+        hard_checks[f"bidi_control_count<={threshold.max_bidi_control_count}"] = (
+            controls <= threshold.max_bidi_control_count
+        )
+
+    hard_failed = [name for name, passed in hard_checks.items() if not passed]
+    quality_failed = [name for name, passed in quality_checks.items() if not passed]
+    failed = list(hard_failed)
+    if threshold.gate_quality_metrics:
+        failed.extend(item for item in quality_failed if item not in failed)
+    checks = {**quality_checks, **hard_checks}
     return {
         "status": "conformant" if not failed else "non_conformant",
+        "quality_status": "meets_targets" if not quality_failed else "below_targets",
         "failed_checks": failed,
+        "hard_failed_checks": hard_failed,
+        "quality_failed_checks": quality_failed,
+        "quality_metrics_gated": threshold.gate_quality_metrics,
+        "all_bidi_controls_gated": threshold.gate_all_bidi_controls,
         "checks": checks,
+        "hard_checks": hard_checks,
+        "quality_checks": quality_checks,
         "diagnostic_track": threshold.diagnostic_track,
         "diagnostic_pages": len(diagnostic),
         "strict_line_exact_rate": group["line_exact_rate"],
         "ltr_run_exact_rate": ltr_rate,
         "numeric_exact_rate": numeric_rate,
         "bracket_exact_rate": bracket_rate,
+        "visual_order_reference_line_count": visual_candidates,
         "visual_order_failure_count": visual_failures,
+        "visual_order_failure_rate": visual_failure_rate,
         "bidi_control_count": controls,
+        "unsafe_bidi_control_count": unsafe_controls,
         "unbalanced_bidi_controls": unbalanced,
         "thresholds": {
+            "gate_quality_metrics": threshold.gate_quality_metrics,
+            "gate_all_bidi_controls": threshold.gate_all_bidi_controls,
             "min_exact_line_rate": threshold.min_exact_line_rate,
             "min_ltr_run_exact_rate": threshold.min_ltr_run_exact_rate,
             "min_numeric_exact_rate": threshold.min_numeric_exact_rate,
             "min_bracket_exact_rate": threshold.min_bracket_exact_rate,
+            "min_visual_order_gain": threshold.min_visual_order_gain,
+            "max_visual_order_error_rate": threshold.max_visual_order_error_rate,
             "max_visual_order_failure_count": threshold.max_visual_order_failure_count,
             "max_bidi_control_count": threshold.max_bidi_control_count,
+            "max_unsafe_bidi_control_count": threshold.max_unsafe_bidi_control_count,
             "max_unbalanced_bidi_controls": threshold.max_unbalanced_bidi_controls,
         },
     }
@@ -937,6 +1000,7 @@ def _evaluate_dataset_impl(
     bidi_sums: defaultdict[str, int] = defaultdict(int)
     for page in pages:
         for key in (
+            "visual_order_reference_line_count",
             "visual_order_failure_count",
             "ltr_run_reference_count",
             "ltr_run_exact_count",
@@ -947,6 +1011,11 @@ def _evaluate_dataset_impl(
             "word_order_comparable_pairs",
             "word_order_correct_pairs",
             "bidi_control_count",
+            "bidi_mark_count",
+            "bidi_embedding_count",
+            "bidi_override_count",
+            "bidi_isolate_count",
+            "unsafe_bidi_control_count",
             "unbalanced_embeddings",
             "unbalanced_isolates",
             "zero_width_count",
@@ -955,13 +1024,10 @@ def _evaluate_dataset_impl(
             "presentation_form_count",
         ):
             bidi_sums[key] += int(page.metrics["bidi"].get(key, 0))
-    bidi_line_count = sum(
-        1 for page in pages for detail in page.details["line_results"] if detail["reference"]
-    )
     bidi = {
         **dict(bidi_sums),
         "visual_order_failure_rate": bidi_sums["visual_order_failure_count"]
-        / max(1, bidi_line_count),
+        / max(1, bidi_sums["visual_order_reference_line_count"]),
         "ltr_run_exact_rate": _safe_rate(
             bidi_sums["ltr_run_exact_count"], bidi_sums["ltr_run_reference_count"]
         ),

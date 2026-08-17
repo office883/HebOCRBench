@@ -624,6 +624,18 @@ def combine_modern_track_reports(
 
     bidi_metrics = _mapping(indexed["modern-bidi-v1"].get("metrics"), "modern-bidi-v1.metrics")
     conformance = _mapping(bidi_metrics.get("conformance"), "modern-bidi-v1.conformance")
+    quality_status = str(conformance.get("quality_status", "unknown"))
+    raw_quality_warnings = conformance.get(
+        "quality_failed_checks",
+        conformance.get("failed_quality_checks", []),
+    )
+    quality_warnings = [str(item) for item in raw_quality_warnings]
+    base.update(
+        {
+            "bidi_quality_status": quality_status,
+            "quality_warnings": quality_warnings,
+        }
+    )
     if conformance.get("status") != "conformant":
         return {
             **base,

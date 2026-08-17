@@ -53,5 +53,19 @@ def test_presentation_forms_are_detected():
 def test_bidi_hygiene_detects_unbalanced_and_invisible_controls():
     report = bidi_hygiene("abc\u2067שלום\u200b")
     assert report["bidi_control_count"] == 1
+    assert report["bidi_override_count"] == 0
     assert report["unbalanced_isolates"] == 1
     assert report["zero_width_count"] == 1
+
+
+def test_bidi_hygiene_separates_benign_marks_from_unsafe_controls():
+    report = bidi_hygiene("אב\u200fג\u202eדה\u202c\u2067ו\u2069")
+
+    assert report["bidi_control_count"] == 5
+    assert report["bidi_mark_count"] == 1
+    assert report["bidi_override_count"] == 1
+    assert report["bidi_embedding_count"] == 1
+    assert report["bidi_isolate_count"] == 2
+    assert report["unsafe_bidi_control_count"] == 2
+    assert report["unbalanced_embeddings"] == 0
+    assert report["unbalanced_isolates"] == 0

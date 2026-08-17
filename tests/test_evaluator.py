@@ -144,3 +144,18 @@ def test_robustness_dataset_publishes_clean_degraded_pair_deltas(gold_page):
     assert all(
         page.details == {"line_results": [], "line_details_compacted": True} for page in run.pages
     )
+
+
+def test_visual_order_rate_excludes_empty_reference_lines(gold_page):
+    empty_line = deepcopy(gold_page["regions"][0]["lines"][0])
+    empty_line["line_id"] = "l-empty"
+    empty_line["text"] = ""
+    gold_page["regions"][0]["lines"].append(empty_line)
+    prediction = perfect_prediction(gold_page)
+
+    run = evaluate_dataset([gold_page], [prediction])
+    conformance = run.metrics["conformance"]
+
+    assert run.pages[0].metrics["bidi"]["visual_order_reference_line_count"] == 1
+    assert conformance["visual_order_reference_line_count"] == 1
+    assert conformance["visual_order_failure_rate"] == 0.0

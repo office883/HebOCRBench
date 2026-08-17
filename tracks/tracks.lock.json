@@ -26,10 +26,10 @@
       "title": "Pinkas historical Hebrew handwriting line recognition"
     },
     "modern-bidi-v1": {
-      "config_fingerprint": "0f4f2144ceaef6219b80f3e1b2415b078b1f59785a33a2d041ed3d5a734fc48d",
+      "config_fingerprint": "84811fb3291fe1de6721b246c5ea2887107deced937ffc18f1884fa7af9863c8",
       "filename": "modern-bidi-v1.yaml",
       "prediction_mode": "unicode-conformance",
-      "sha256": "43cfc535c70fcb93bfe6371f9e1dd8c6a854a906b8a8a3a49b85bce1f711329f",
+      "sha256": "e6f1a43bb26d8c271e4b18d6ac321433d9398f01d3fbe29f350f659b93bfdb0f",
       "task": "unicode-conformance",
       "title": "Modern Hebrew Unicode and BiDi conformance"
     },
@@ -90,5 +90,5 @@
       "title": "Synthetic Noto Rashi Hebrew typeface diagnostic"
     }
   },
-  "tracks_version": "1.0.0"
+  "tracks_version": "1.1.0"
 }

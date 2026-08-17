@@ -163,7 +163,7 @@ def track_lock_payload(directory: str | Path) -> dict[str, object]:
         raise TrackError(f"No track YAML files found under {root}")
     return {
         "schema_version": "1.0",
-        "tracks_version": "1.0.0",
+        "tracks_version": "1.1.0",
         "tracks": tracks,
     }
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- versioned `modern-bidi-v1` to track contract `1.1.0`;
+- separated recognition-quality targets from hard Unicode/BiDi conformance;
+- kept strict line, LTR-run, numeric and bracket exactness inside the scored
+  BiDi component instead of using them to disqualify otherwise valid OCR runs;
+- made the visual-order detector require both a material gain over logical order
+  and a close match to the visual or reversed reference, reducing noise-driven
+  false positives without allowing confirmed visual-order storage;
+- allowed directional marks and balanced isolates while continuing to reject
+  directional embeddings, overrides and unbalanced controls;
+- exposed BiDi quality warnings in the guarded Modern score and bumped the
+  canonical track-lock version to `1.1.0`; frozen dataset and suite identities
+  remain unchanged, while newly generated reports carry the corrected track
+  fingerprint.
+
 ## 1.0.0 — Hebrew OCR benchmark suite
 
 - established five frozen, certified Modern Hebrew print roots and a guarded

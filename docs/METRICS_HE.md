@@ -30,15 +30,34 @@ CER משתמש בקוד־פוינטים; GCER משתמש ב־Extended Grapheme C
 
 ## 5. BiDi
 
+הדיווח מחולק לשתי שכבות ברורות.
+
+### 5.1 שערי conformance קשיחים
+
+- פלט בסדר חזותי מזוהה רק כאשר הפלט קרוב לפחות ב־`0.25` לגרסה החזותית או
+  ההפוכה יותר מאשר לסדר הלוגי, ובמקביל שיעור השגיאה שלו מול הגרסה החזותית
+  אינו עולה על `0.25`;
+- directional embeddings או overrides, לרבות `LRE`, `RLE`, `PDF`, `LRO`
+  ו־`RLO`: אפס;
+- embedding או isolate controls לא מאוזנים: אפס.
+
+כל חשד חזותי שעובר את שני תנאי הביטחון הוא כשל קשיח. אין מכסה המתירה אחוז
+מסוים של שורות הפוכות; במקום זאת הגלאי עצמו מסרב להפוך רעש OCR לכשל BiDi.
+
+### 5.2 יעדי איכות שאינם שערי קבלה ב־1.1.0
+
 - strict logical line exact rate;
 - LTR-run exact rate;
 - numeric exact rate;
-- bracket semantic accuracy;
+- bracket exact rate;
 - pairwise word-order accuracy;
-- visual-order failure count;
-- invalid/unbalanced BiDi controls.
+- יעד היגיינה של אפס BiDi controls.
 
-כישלון בשער conformance מונע official rank.
+`LRM`, `RLM`, `ALM` ו־isolates מאוזנים מדווחים ונכללים ביעד ההיגיינה, אך
+אינם לבדם עילת פסילה. אי־עמידה ביעדי האיכות נרשמת ב־
+`quality_failed_checks`, מורידה את רכיב ה־BiDi דרך המדדים הרגילים, ואינה
+הופכת טעות OCR רגילה להפרת Unicode. ה־strict scorer מסיר directional
+controls לפני edit distance, בלי להפוך טקסט ובלי לבחור בין פלט לוגי לחזותי.
 
 ## 6. פריסה וסדר קריאה
 

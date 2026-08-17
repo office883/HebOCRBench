@@ -30,6 +30,11 @@ BIDI_CONTROLS = frozenset(
     }
 )
 
+BIDI_MARKS = frozenset({"\u061c", "\u200e", "\u200f"})
+BIDI_EMBEDDINGS = frozenset({"\u202a", "\u202b", "\u202c"})
+BIDI_OVERRIDES = frozenset({"\u202d", "\u202e"})
+BIDI_ISOLATES = frozenset({"\u2066", "\u2067", "\u2068", "\u2069"})
+
 ZERO_WIDTH_CONTROLS = frozenset(
     {
         "\u200b",  # ZERO WIDTH SPACE
@@ -174,6 +179,10 @@ def bidi_hygiene(text: str) -> dict[str, object]:
     """Inspect invisible Unicode controls without modifying the scored output."""
 
     bidi_positions = [i for i, ch in enumerate(text) if ch in BIDI_CONTROLS]
+    bidi_mark_positions = [i for i, ch in enumerate(text) if ch in BIDI_MARKS]
+    bidi_embedding_positions = [i for i, ch in enumerate(text) if ch in BIDI_EMBEDDINGS]
+    bidi_override_positions = [i for i, ch in enumerate(text) if ch in BIDI_OVERRIDES]
+    bidi_isolate_positions = [i for i, ch in enumerate(text) if ch in BIDI_ISOLATES]
     zero_width_positions = [i for i, ch in enumerate(text) if ch in ZERO_WIDTH_CONTROLS]
     replacement_positions = [i for i, ch in enumerate(text) if ch == "\ufffd"]
     private_use_positions = [i for i, ch in enumerate(text) if unicodedata.category(ch) == "Co"]
@@ -205,6 +214,17 @@ def bidi_hygiene(text: str) -> dict[str, object]:
     return {
         "bidi_control_count": len(bidi_positions),
         "bidi_control_positions": bidi_positions,
+        "bidi_mark_count": len(bidi_mark_positions),
+        "bidi_mark_positions": bidi_mark_positions,
+        "bidi_embedding_count": len(bidi_embedding_positions),
+        "bidi_embedding_positions": bidi_embedding_positions,
+        "bidi_override_count": len(bidi_override_positions),
+        "bidi_override_positions": bidi_override_positions,
+        "bidi_isolate_count": len(bidi_isolate_positions),
+        "bidi_isolate_positions": bidi_isolate_positions,
+        "unsafe_bidi_control_count": (
+            len(bidi_embedding_positions) + len(bidi_override_positions)
+        ),
         "bidi_control_names": dict(names),
         "unbalanced_embeddings": unbalanced_embeddings,
         "unbalanced_isolates": unbalanced_isolates,

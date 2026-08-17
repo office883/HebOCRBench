@@ -21,12 +21,17 @@ class MatchingConfig:
 @dataclass(frozen=True, slots=True)
 class ConformanceConfig:
     diagnostic_track: str = "bidi_diagnostic"
+    gate_quality_metrics: bool = True
+    gate_all_bidi_controls: bool = True
     min_exact_line_rate: float = 0.95
     min_ltr_run_exact_rate: float = 0.98
     min_numeric_exact_rate: float = 0.99
     min_bracket_exact_rate: float = 0.99
+    min_visual_order_gain: float = 0.0
+    max_visual_order_error_rate: float = 1.0
     max_visual_order_failure_count: int = 0
     max_bidi_control_count: int = 0
+    max_unsafe_bidi_control_count: int = 0
     max_unbalanced_bidi_controls: int = 0
 
 
@@ -83,10 +88,32 @@ class BenchmarkConfig:
             ("min_ltr_run_exact_rate", self.conformance.min_ltr_run_exact_rate),
             ("min_numeric_exact_rate", self.conformance.min_numeric_exact_rate),
             ("min_bracket_exact_rate", self.conformance.min_bracket_exact_rate),
+            ("min_visual_order_gain", self.conformance.min_visual_order_gain),
+            (
+                "max_visual_order_error_rate",
+                self.conformance.max_visual_order_error_rate,
+            ),
             ("confidence", self.statistics.confidence),
         ):
             if not 0.0 <= float(value) <= 1.0:
                 raise ValueError(f"{name} must be in [0, 1], got {value}")
+        for name, value in (
+            (
+                "max_visual_order_failure_count",
+                self.conformance.max_visual_order_failure_count,
+            ),
+            ("max_bidi_control_count", self.conformance.max_bidi_control_count),
+            (
+                "max_unsafe_bidi_control_count",
+                self.conformance.max_unsafe_bidi_control_count,
+            ),
+            (
+                "max_unbalanced_bidi_controls",
+                self.conformance.max_unbalanced_bidi_controls,
+            ),
+        ):
+            if value < 0:
+                raise ValueError(f"{name} must be non-negative")
         if self.statistics.bootstrap_samples < 0:
             raise ValueError("bootstrap_samples must be non-negative")
         if self.statistics.worst_page_count < 0:
