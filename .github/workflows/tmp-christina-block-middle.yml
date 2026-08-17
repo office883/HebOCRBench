@@ -1,0 +1,127 @@
+name: Temporary Christina Block clean middle
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/tmp-christina-block-middle.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Install tools
+        run: |
+          set -euxo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          python -m pip install --quiet --upgrade gdown
+          ffmpeg -version | head -n 3
+
+      - name: Download public Drive source
+        run: |
+          set -euxo pipefail
+          gdown 'https://drive.google.com/uc?id=1sExpLofblqNUUxbwWQrPUE7kSRWK19nz' -O reaction_full.mp4
+          test "$(stat -c%s reaction_full.mp4)" -eq 741568607
+          sha256sum reaction_full.mp4 | tee source.sha256
+          ffprobe -v error \
+            -show_entries format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate,sample_rate,channels \
+            -of json reaction_full.mp4 | tee source_probe.json
+          python - <<'PY'
+          import json
+          data=json.load(open('source_probe.json',encoding='utf-8'))
+          duration=float(data['format']['duration'])
+          streams=data.get('streams',[])
+          assert duration > 2500, duration
+          assert any(s.get('codec_type')=='video' for s in streams)
+          assert any(s.get('codec_type')=='audio' for s in streams)
+          print(f'Source validated: {duration:.3f}s')
+          PY
+
+      - name: Build exact trim graph
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          segments=[
+            (400,418),(424,451),(467,470),(473,494),
+            (518,553),(558,648),(691,696),(708,710),
+            (726,734),(735,761),(772,799),(821,825),
+            (826,871),(888,945),(985,998),(1005,1098),
+            (1123,1126),(1139,1141),(1150,1164),(1167,1180),
+            (1195,1214),(1235,1238),(1254,1270),(1291,1303),
+            (1312,1314),(1325,1335),(1340,1344),(1346,1431),
+            (1487,1503),(1509,1542),(1549,1575),(1584,1627),
+            (1657,1661),(1671,1726),(1734,1783),(1799,1813),
+            (1836,1859),(1883,2021),
+          ]
+          assert len(segments)==38
+          assert sum(b-a for a,b in segments)==1058
+          graph=[]
+          for i,(start,end) in enumerate(segments):
+              graph.append(
+                  f'[0:v:0]trim=start={start}:end={end},setpts=PTS-STARTPTS,'
+                  'scale=1280:720:force_original_aspect_ratio=decrease,'
+                  'pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=25,format=yuv420p'
+                  f'[v{i}]'
+              )
+              graph.append(
+                  f'[0:a:0]atrim=start={start}:end={end},asetpts=PTS-STARTPTS,'
+                  'aresample=48000:async=1:first_pts=0,'
+                  'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo'
+                  f'[a{i}]'
+              )
+          inputs=''.join(f'[v{i}][a{i}]' for i in range(len(segments)))
+          graph.append(f'{inputs}concat=n={len(segments)}:v=1:a=1[vout][aout]')
+          Path('filter_complex.txt').write_text(';\n'.join(graph),encoding='utf-8')
+          Path('middle_manifest.txt').write_text(
+              'segments=38\nexpected_duration_seconds=1058\n' +
+              '\n'.join(f'{i+1:02d}: {a}-{b} ({b-a}s)' for i,(a,b) in enumerate(segments))+'\n',
+              encoding='utf-8'
+          )
+          PY
+
+      - name: Render clean middle
+        run: |
+          set -euxo pipefail
+          ffmpeg -hide_banner -y -i reaction_full.mp4 \
+            -filter_complex_script filter_complex.txt \
+            -map '[vout]' -map '[aout]' \
+            -c:v libx264 -preset medium -crf 19 -profile:v high -level 4.1 \
+            -c:a aac -b:a 192k -ar 48000 -ac 2 \
+            -movflags +faststart middle_clean.mp4
+          ffprobe -v error \
+            -show_entries format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate,sample_rate,channels \
+            -of json middle_clean.mp4 | tee middle_probe.json
+          python - <<'PY'
+          import json
+          data=json.load(open('middle_probe.json',encoding='utf-8'))
+          duration=float(data['format']['duration'])
+          streams=data.get('streams',[])
+          assert 1057.4 <= duration <= 1058.8, duration
+          assert any(s.get('codec_type')=='video' for s in streams)
+          assert any(s.get('codec_type')=='audio' for s in streams)
+          print(f'Clean middle validated: {duration:.3f}s')
+          PY
+          ffmpeg -v error -i middle_clean.mp4 -f null -
+          sha256sum middle_clean.mp4 | tee middle_clean.sha256
+          ls -lh middle_clean.mp4
+
+      - name: Upload clean middle
+        uses: actions/upload-artifact@v4
+        with:
+          name: christina-block-clean-middle
+          path: |
+            middle_clean.mp4
+            middle_clean.sha256
+            middle_probe.json
+            middle_manifest.txt
+            source_probe.json
+            source.sha256
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
