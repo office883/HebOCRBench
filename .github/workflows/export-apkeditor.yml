@@ -27,7 +27,8 @@ jobs:
           SHA='a9cd40df818845456be6d696de6110c89edf4b0a0580cb83438ed6b25a366e67'
           curl -fsSL --retry 5 --retry-all-errors "$URL" -o "$RUNNER_TEMP/apkeditor/APKEditor-1.4.9.jar"
           echo "$SHA  $RUNNER_TEMP/apkeditor/APKEditor-1.4.9.jar" | sha256sum -c -
-          java -jar "$RUNNER_TEMP/apkeditor/APKEditor-1.4.9.jar" -version
+          java -jar "$RUNNER_TEMP/apkeditor/APKEditor-1.4.9.jar" -version > "$RUNNER_TEMP/apkeditor/version.txt" 2>&1 || test $? -eq 2
+          grep -F 'APKEditor version 1.4.9' "$RUNNER_TEMP/apkeditor/version.txt"
           printf 'version=1.4.9\nsha256=%s\n' "$SHA" > "$RUNNER_TEMP/apkeditor/VERIFIED.txt"
 
       - name: Upload verified merger
