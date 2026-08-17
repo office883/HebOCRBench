@@ -15,20 +15,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - name: Install Python libraries and FFmpeg
+      - name: Install current Python downloader stack and FFmpeg
         run: |
           set -euxo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends ffmpeg nodejs
+          sudo apt-get install -y --no-install-recommends ffmpeg ca-certificates
           python -m pip install --quiet --upgrade pip
-          python -m pip install --quiet --upgrade pytubefix 'yt-dlp[default,curl-cffi]'
+          python -m pip install --quiet --upgrade --pre 'yt-dlp[default,curl-cffi,deno]' pytubefix
           python - <<'PY'
-          import pytubefix, yt_dlp
-          print('pytubefix', getattr(pytubefix, '__version__', 'unknown'))
+          import shutil
+          import yt_dlp
+          import pytubefix
           print('yt-dlp', yt_dlp.version.__version__)
+          print('pytubefix', getattr(pytubefix, '__version__', 'unknown'))
+          print('deno', shutil.which('deno'))
           PY
+          deno --version
+          ffmpeg -version | head -n 3
 
-      - name: Download video using Python APIs
+      - name: Download video through the corrected Python APIs
         run: |
           set -euxo pipefail
           cat > /tmp/download_video.py <<'PY'
@@ -48,7 +53,8 @@ jobs:
           def probe(path: pathlib.Path) -> dict:
               p = subprocess.run([
                   'ffprobe', '-v', 'error',
-                  '-show_entries', 'format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate,sample_rate,channels',
+                  '-show_entries',
+                  'format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate,sample_rate,channels',
                   '-of', 'json', str(path),
               ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=180)
               if p.returncode:
@@ -60,141 +66,136 @@ jobs:
               try:
                   duration = float(data['format']['duration'])
                   streams = data.get('streams') or []
-                  ok = 2545 <= duration <= 2565
-                  ok = ok and any(s.get('codec_type') == 'video' for s in streams)
-                  ok = ok and any(s.get('codec_type') == 'audio' for s in streams)
-                  return ok, data
+                  return (
+                      2545 <= duration <= 2565
+                      and any(s.get('codec_type') == 'video' for s in streams)
+                      and any(s.get('codec_type') == 'audio' for s in streams)
+                  ), data
               except Exception:
                   return False, data
 
+          def choose_valid(prefix: str) -> tuple[pathlib.Path | None, dict | None]:
+              files = [
+                  p for p in WORK.glob(prefix + '.*')
+                  if p.is_file() and p.suffix not in ('.part', '.ytdl', '.json')
+              ]
+              files.sort(key=lambda p: p.stat().st_size, reverse=True)
+              last_probe = None
+              for candidate in files:
+                  ok, data = valid(candidate)
+                  last_probe = data
+                  if ok:
+                      return candidate, data
+              return None, last_probe
+
           source: pathlib.Path | None = None
 
-          # First try pytubefix, which uses a separate YouTube extraction path.
-          clients = [None, 'WEB', 'ANDROID', 'IOS', 'TV', 'MWEB', 'WEB_EMBED']
-          for client in clients:
-              rec: dict[str, object] = {'library': 'pytubefix', 'client': client}
+          # This is the actual yt-dlp embedding API, not a shell invocation.
+          from yt_dlp import YoutubeDL
+          client_sets: list[tuple[str, list[str] | None]] = [
+              ('default', None),
+              ('web_safari', ['web_safari']),
+              ('ios', ['ios']),
+              ('mweb', ['mweb']),
+              ('tv', ['tv']),
+              ('tv_embedded', ['tv_embedded']),
+              ('android_vr', ['android_vr']),
+              ('web', ['web']),
+          ]
+
+          for label, clients in client_sets:
+              rec: dict[str, object] = {'library': 'yt-dlp', 'client_set': label}
               report['attempts'].append(rec)
+              prefix = f'ytdlp_{label}'
               try:
-                  from pytubefix import YouTube
-                  kwargs = {}
-                  if client:
-                      kwargs['client'] = client
-                  yt = YouTube(URL, **kwargs)
-                  rec['title'] = yt.title
-                  rec['length'] = yt.length
-                  streams = list(yt.streams)
-                  rec['stream_count'] = len(streams)
-                  rec['streams'] = [
-                      {
-                          'itag': s.itag,
-                          'mime_type': s.mime_type,
-                          'resolution': s.resolution,
-                          'abr': s.abr,
-                          'progressive': s.is_progressive,
-                          'adaptive': s.is_adaptive,
-                          'fps': getattr(s, 'fps', None),
-                      }
-                      for s in streams
-                  ]
-
-                  progressive = [s for s in streams if s.is_progressive and s.subtype == 'mp4']
-                  progressive.sort(key=lambda s: int((s.resolution or '0p').rstrip('p')), reverse=True)
-                  progressive = [s for s in progressive if int((s.resolution or '0p').rstrip('p')) <= 720]
-                  if progressive:
-                      path = pathlib.Path(progressive[0].download(output_path=str(WORK), filename=f'pytube_{client or "default"}.mp4'))
-                  else:
-                      videos = [s for s in streams if s.only_video and s.subtype == 'mp4' and s.resolution]
-                      videos = [s for s in videos if int(s.resolution.rstrip('p')) <= 720]
-                      videos.sort(key=lambda s: (int(s.resolution.rstrip('p')), s.fps or 0), reverse=True)
-                      audios = [s for s in streams if s.only_audio and s.subtype in ('mp4', 'm4a')]
-                      audios.sort(key=lambda s: int((s.abr or '0kbps').replace('kbps', '')), reverse=True)
-                      if not videos or not audios:
-                          raise RuntimeError('No suitable video/audio streams')
-                      vp = pathlib.Path(videos[0].download(output_path=str(WORK), filename=f'pytube_{client or "default"}_video.mp4'))
-                      ap = pathlib.Path(audios[0].download(output_path=str(WORK), filename=f'pytube_{client or "default"}_audio.m4a'))
-                      path = WORK / f'pytube_{client or "default"}_merged.mkv'
-                      subprocess.run([
-                          'ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
-                          '-i', str(vp), '-i', str(ap), '-map', '0:v:0', '-map', '1:a:0', '-c', 'copy', str(path),
-                      ], check=True, timeout=1800)
-
-                  ok, data = valid(path)
+                  opts: dict[str, object] = {
+                      'format': 'bv*[height<=720]+ba/b[height<=720]',
+                      'outtmpl': str(WORK / f'{prefix}.%(ext)s'),
+                      'merge_output_format': 'mkv',
+                      'noplaylist': True,
+                      'quiet': False,
+                      'verbose': True,
+                      'retries': 10,
+                      'fragment_retries': 10,
+                      'concurrent_fragment_downloads': 4,
+                      'continuedl': True,
+                      'overwrites': True,
+                      'windowsfilenames': True,
+                  }
+                  if clients:
+                      opts['extractor_args'] = {'youtube': {'player_client': clients}}
+                  with YoutubeDL(opts) as ydl:
+                      info = ydl.extract_info(URL, download=True)
+                      rec['title'] = info.get('title')
+                      rec['duration'] = info.get('duration')
+                      rec['format_id'] = info.get('format_id')
+                  path, data = choose_valid(prefix)
                   rec['probe'] = data
-                  if ok:
+                  if path is not None:
                       source = pathlib.Path('reaction_source' + (path.suffix or '.mkv'))
                       shutil.copy2(path, source)
                       rec['success'] = True
+                      rec['source_candidate'] = str(path)
                       break
                   rec['success'] = False
               except Exception:
                   rec['error'] = traceback.format_exc()
               print(json.dumps(rec, ensure_ascii=False, indent=2, default=str), flush=True)
 
-          # Fallback: official yt-dlp Python embedding API.
+          # Independent fallback extractor. It often needs a PO token on data-centre IPs,
+          # but testing it here gives us a definitive result rather than an assumption.
           if source is None:
-              from yt_dlp import YoutubeDL
-              clients = ['web_safari', 'ios', 'mweb', 'tv_embedded', 'android_vr', 'web']
-              for client in clients:
-                  rec = {'library': 'yt-dlp', 'client': client}
-                  report['attempts'].append(rec)
-                  try:
-                      template = str(WORK / f'ytdlp_{client}.%(ext)s')
-                      opts = {
-                          'format': 'bv*[height<=720]+ba/b[height<=720]',
-                          'outtmpl': template,
-                          'merge_output_format': 'mkv',
-                          'noplaylist': True,
-                          'quiet': False,
-                          'retries': 10,
-                          'fragment_retries': 10,
-                          'concurrent_fragment_downloads': 4,
-                          'extractor_args': {'youtube': {'player_client': [client]}},
-                          'impersonate': 'chrome',
-                          'js_runtimes': {'node': {}},
-                          'remote_components': {'ejs:github'},
-                      }
-                      with YoutubeDL(opts) as ydl:
-                          info = ydl.extract_info(URL, download=True)
-                          rec['title'] = info.get('title')
-                          rec['duration'] = info.get('duration')
-                          requested = info.get('requested_downloads') or []
-                          candidates = []
-                          for item in requested:
-                              fp = item.get('filepath')
-                              if fp:
-                                  candidates.append(pathlib.Path(fp))
-                          fp = info.get('filepath') or info.get('_filename')
-                          if fp:
-                              candidates.append(pathlib.Path(fp))
-                      candidates += [p for p in WORK.glob(f'ytdlp_{client}.*') if p.suffix not in ('.part', '.ytdl')]
-                      candidates = [p for p in candidates if p.exists()]
-                      if not candidates:
-                          raise RuntimeError('yt-dlp produced no file')
-                      path = max(candidates, key=lambda p: p.stat().st_size)
-                      ok, data = valid(path)
-                      rec['probe'] = data
-                      if ok:
-                          source = pathlib.Path('reaction_source' + (path.suffix or '.mkv'))
-                          shutil.copy2(path, source)
-                          rec['success'] = True
-                          break
-                      rec['success'] = False
-                  except Exception:
-                      rec['error'] = traceback.format_exc()
-                  print(json.dumps(rec, ensure_ascii=False, indent=2, default=str), flush=True)
+              try:
+                  from pytubefix import YouTube
+                  for client in (None, 'WEB', 'TV', 'MWEB', 'ANDROID', 'IOS'):
+                      rec = {'library': 'pytubefix', 'client': client}
+                      report['attempts'].append(rec)
+                      try:
+                          kwargs = {} if client is None else {'client': client}
+                          yt = YouTube(URL, **kwargs)
+                          rec['title'] = yt.title
+                          rec['length'] = yt.length
+                          streams = list(yt.streams)
+                          progressive = [
+                              s for s in streams
+                              if s.is_progressive and s.subtype == 'mp4' and s.resolution
+                              and int(s.resolution.rstrip('p')) <= 720
+                          ]
+                          progressive.sort(key=lambda s: int(s.resolution.rstrip('p')), reverse=True)
+                          if not progressive:
+                              raise RuntimeError('No progressive MP4 stream returned')
+                          path = pathlib.Path(progressive[0].download(
+                              output_path=str(WORK), filename=f'pytubefix_{client or "default"}.mp4'
+                          ))
+                          ok, data = valid(path)
+                          rec['probe'] = data
+                          if ok:
+                              source = pathlib.Path('reaction_source.mp4')
+                              shutil.copy2(path, source)
+                              rec['success'] = True
+                              break
+                          rec['success'] = False
+                      except Exception:
+                          rec['error'] = traceback.format_exc()
+                      print(json.dumps(rec, ensure_ascii=False, indent=2, default=str), flush=True)
+                  
+              except Exception:
+                  report['pytubefix_import_error'] = traceback.format_exc()
 
           pathlib.Path('python_download_report.json').write_text(
               json.dumps(report, ensure_ascii=False, indent=2, default=str), encoding='utf-8'
           )
           if source is None:
-              raise SystemExit('Neither pytubefix nor yt-dlp produced a valid full source video')
+              raise SystemExit('Python libraries could not obtain a valid full source video')
           pathlib.Path('source_path.txt').write_text(str(source), encoding='utf-8')
           print('SOURCE=', source, 'BYTES=', source.stat().st_size, flush=True)
           PY
           python /tmp/download_video.py 2>&1 | tee python_download.log
           INPUT="$(cat source_path.txt)"
           echo "INPUT=$INPUT" >> "$GITHUB_ENV"
-          ffprobe -v error -show_entries format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate,sample_rate,channels -of json "$INPUT" | tee source_probe.json
+          ffprobe -v error \
+            -show_entries format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate,sample_rate,channels \
+            -of json "$INPUT" | tee source_probe.json
 
       - name: Cut and join the 38 clean middle segments
         run: |
@@ -215,7 +216,9 @@ jobs:
           ]
           assert len(segments) == 38
           assert sum(b-a for a,b in segments) == 1058
-          Path('segments.tsv').write_text('\n'.join(f'{i:02d}\t{a}\t{b}' for i,(a,b) in enumerate(segments)), encoding='utf-8')
+          Path('segments.tsv').write_text(
+              '\n'.join(f'{i:02d}\t{a}\t{b}' for i,(a,b) in enumerate(segments)), encoding='utf-8'
+          )
           Path('middle_manifest.txt').write_text(
               'segments=38\nexpected_duration_seconds=1058\n' +
               '\n'.join(f'{i+1:02d}: {a}-{b} ({b-a}s)' for i,(a,b) in enumerate(segments)) + '\n',
@@ -233,8 +236,11 @@ jobs:
               -c:a aac -b:a 192k -ar 48000 -ac 2 "rendered_segments/seg_${idx}.mp4"
             printf "file '%s'\n" "$PWD/rendered_segments/seg_${idx}.mp4" >> concat.txt
           done < segments.tsv
-          ffmpeg -hide_banner -loglevel error -y -f concat -safe 0 -i concat.txt -c copy -movflags +faststart middle_clean.mp4
-          ffprobe -v error -show_entries format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate,sample_rate,channels -of json middle_clean.mp4 | tee middle_probe.json
+          ffmpeg -hide_banner -loglevel error -y \
+            -f concat -safe 0 -i concat.txt -c copy -movflags +faststart middle_clean.mp4
+          ffprobe -v error \
+            -show_entries format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate,sample_rate,channels \
+            -of json middle_clean.mp4 | tee middle_probe.json
           python - <<'PY'
           import json
           data = json.load(open('middle_probe.json', encoding='utf-8'))
@@ -245,7 +251,7 @@ jobs:
           ffmpeg -v error -i middle_clean.mp4 -f null -
           sha256sum middle_clean.mp4 | tee middle_clean.sha256
 
-      - name: Upload the real output and diagnostics
+      - name: Upload only a verified output, plus diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
