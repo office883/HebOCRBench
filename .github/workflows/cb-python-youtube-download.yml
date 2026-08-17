@@ -15,25 +15,32 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - name: Install current Python downloader stack and FFmpeg
+      - name: Install yt-dlp Python API, PO-token provider, and FFmpeg
         run: |
           set -euxo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends ffmpeg ca-certificates
+          sudo apt-get install -y --no-install-recommends ffmpeg ca-certificates curl
           python -m pip install --quiet --upgrade pip
-          python -m pip install --quiet --upgrade --pre 'yt-dlp[default,curl-cffi,deno]' pytubefix
+          python -m pip install --quiet --upgrade --pre \
+            'yt-dlp[default,curl-cffi,deno]' \
+            bgutil-ytdlp-pot-provider \
+            pytubefix
+          docker pull brainicism/bgutil-ytdlp-pot-provider:latest
+          docker run --name bgutil-provider -d --init --net=host \
+            brainicism/bgutil-ytdlp-pot-provider:latest
+          sleep 6
+          docker ps --filter name=bgutil-provider
+          docker logs bgutil-provider | tail -n 80 || true
+          curl -sS --max-time 10 http://127.0.0.1:4416/ || true
           python - <<'PY'
           import shutil
           import yt_dlp
-          import pytubefix
           print('yt-dlp', yt_dlp.version.__version__)
-          print('pytubefix', getattr(pytubefix, '__version__', 'unknown'))
           print('deno', shutil.which('deno'))
           PY
           deno --version
-          ffmpeg -version | head -n 3
 
-      - name: Download video through the corrected Python APIs
+      - name: Download video using yt-dlp as a Python library with PO tokens
         run: |
           set -euxo pipefail
           cat > /tmp/download_video.py <<'PY'
@@ -45,23 +52,25 @@ jobs:
           import subprocess
           import traceback
 
+          from yt_dlp import YoutubeDL
+
           URL = 'https://www.youtube.com/watch?v=HOW33afxE6g'
           WORK = pathlib.Path('python_download')
           WORK.mkdir(exist_ok=True)
           report: dict[str, object] = {'url': URL, 'attempts': []}
 
           def probe(path: pathlib.Path) -> dict:
-              p = subprocess.run([
+              proc = subprocess.run([
                   'ffprobe', '-v', 'error',
                   '-show_entries',
                   'format=duration,size:stream=index,codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate,sample_rate,channels',
                   '-of', 'json', str(path),
               ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=180)
-              if p.returncode:
-                  return {'returncode': p.returncode, 'output': p.stdout}
-              return json.loads(p.stdout)
+              if proc.returncode:
+                  return {'returncode': proc.returncode, 'output': proc.stdout}
+              return json.loads(proc.stdout)
 
-          def valid(path: pathlib.Path) -> tuple[bool, dict]:
+          def is_valid(path: pathlib.Path) -> tuple[bool, dict]:
               data = probe(path)
               try:
                   duration = float(data['format']['duration'])
@@ -74,40 +83,29 @@ jobs:
               except Exception:
                   return False, data
 
-          def choose_valid(prefix: str) -> tuple[pathlib.Path | None, dict | None]:
-              files = [
-                  p for p in WORK.glob(prefix + '.*')
-                  if p.is_file() and p.suffix not in ('.part', '.ytdl', '.json')
-              ]
-              files.sort(key=lambda p: p.stat().st_size, reverse=True)
-              last_probe = None
-              for candidate in files:
-                  ok, data = valid(candidate)
-                  last_probe = data
-                  if ok:
-                      return candidate, data
-              return None, last_probe
-
           source: pathlib.Path | None = None
-
-          # This is the actual yt-dlp embedding API, not a shell invocation.
-          from yt_dlp import YoutubeDL
-          client_sets: list[tuple[str, list[str] | None]] = [
+          attempts: list[tuple[str, list[str] | None]] = [
               ('default', None),
               ('web_safari', ['web_safari']),
-              ('ios', ['ios']),
               ('mweb', ['mweb']),
               ('tv', ['tv']),
-              ('tv_embedded', ['tv_embedded']),
+              ('ios', ['ios']),
               ('android_vr', ['android_vr']),
-              ('web', ['web']),
           ]
 
-          for label, clients in client_sets:
+          for label, clients in attempts:
+              prefix = f'ytdlp_{label}'
               rec: dict[str, object] = {'library': 'yt-dlp', 'client_set': label}
               report['attempts'].append(rec)
-              prefix = f'ytdlp_{label}'
               try:
+                  extractor_args: dict[str, dict[str, list[str]]] = {
+                      'youtubepot-bgutilhttp': {
+                          'base_url': ['http://127.0.0.1:4416'],
+                      },
+                  }
+                  if clients:
+                      extractor_args['youtube'] = {'player_client': clients}
+
                   opts: dict[str, object] = {
                       'format': 'bv*[height<=720]+ba/b[height<=720]',
                       'outtmpl': str(WORK / f'{prefix}.%(ext)s'),
@@ -118,75 +116,41 @@ jobs:
                       'retries': 10,
                       'fragment_retries': 10,
                       'concurrent_fragment_downloads': 4,
-                      'continuedl': True,
                       'overwrites': True,
-                      'windowsfilenames': True,
+                      'extractor_args': extractor_args,
                   }
-                  if clients:
-                      opts['extractor_args'] = {'youtube': {'player_client': clients}}
                   with YoutubeDL(opts) as ydl:
                       info = ydl.extract_info(URL, download=True)
                       rec['title'] = info.get('title')
                       rec['duration'] = info.get('duration')
                       rec['format_id'] = info.get('format_id')
-                  path, data = choose_valid(prefix)
-                  rec['probe'] = data
-                  if path is not None:
-                      source = pathlib.Path('reaction_source' + (path.suffix or '.mkv'))
-                      shutil.copy2(path, source)
-                      rec['success'] = True
-                      rec['source_candidate'] = str(path)
+
+                  candidates = [
+                      path for path in WORK.glob(prefix + '.*')
+                      if path.is_file() and path.suffix not in ('.part', '.ytdl', '.json')
+                  ]
+                  candidates.sort(key=lambda path: path.stat().st_size, reverse=True)
+                  for candidate in candidates:
+                      ok, data = is_valid(candidate)
+                      rec.setdefault('probes', []).append({'path': str(candidate), 'probe': data})
+                      if ok:
+                          source = pathlib.Path('reaction_source' + (candidate.suffix or '.mkv'))
+                          shutil.copy2(candidate, source)
+                          rec['success'] = True
+                          rec['source_candidate'] = str(candidate)
+                          break
+                  if source is not None:
                       break
                   rec['success'] = False
               except Exception:
                   rec['error'] = traceback.format_exc()
               print(json.dumps(rec, ensure_ascii=False, indent=2, default=str), flush=True)
 
-          # Independent fallback extractor. It often needs a PO token on data-centre IPs,
-          # but testing it here gives us a definitive result rather than an assumption.
-          if source is None:
-              try:
-                  from pytubefix import YouTube
-                  for client in (None, 'WEB', 'TV', 'MWEB', 'ANDROID', 'IOS'):
-                      rec = {'library': 'pytubefix', 'client': client}
-                      report['attempts'].append(rec)
-                      try:
-                          kwargs = {} if client is None else {'client': client}
-                          yt = YouTube(URL, **kwargs)
-                          rec['title'] = yt.title
-                          rec['length'] = yt.length
-                          streams = list(yt.streams)
-                          progressive = [
-                              s for s in streams
-                              if s.is_progressive and s.subtype == 'mp4' and s.resolution
-                              and int(s.resolution.rstrip('p')) <= 720
-                          ]
-                          progressive.sort(key=lambda s: int(s.resolution.rstrip('p')), reverse=True)
-                          if not progressive:
-                              raise RuntimeError('No progressive MP4 stream returned')
-                          path = pathlib.Path(progressive[0].download(
-                              output_path=str(WORK), filename=f'pytubefix_{client or "default"}.mp4'
-                          ))
-                          ok, data = valid(path)
-                          rec['probe'] = data
-                          if ok:
-                              source = pathlib.Path('reaction_source.mp4')
-                              shutil.copy2(path, source)
-                              rec['success'] = True
-                              break
-                          rec['success'] = False
-                      except Exception:
-                          rec['error'] = traceback.format_exc()
-                      print(json.dumps(rec, ensure_ascii=False, indent=2, default=str), flush=True)
-                  
-              except Exception:
-                  report['pytubefix_import_error'] = traceback.format_exc()
-
           pathlib.Path('python_download_report.json').write_text(
               json.dumps(report, ensure_ascii=False, indent=2, default=str), encoding='utf-8'
           )
           if source is None:
-              raise SystemExit('Python libraries could not obtain a valid full source video')
+              raise SystemExit('yt-dlp with the PO-token provider could not obtain a valid source')
           pathlib.Path('source_path.txt').write_text(str(source), encoding='utf-8')
           print('SOURCE=', source, 'BYTES=', source.stat().st_size, flush=True)
           PY
@@ -215,13 +179,17 @@ jobs:
               (1836,1859),(1883,2021),
           ]
           assert len(segments) == 38
-          assert sum(b-a for a,b in segments) == 1058
+          assert sum(end-start for start,end in segments) == 1058
           Path('segments.tsv').write_text(
-              '\n'.join(f'{i:02d}\t{a}\t{b}' for i,(a,b) in enumerate(segments)), encoding='utf-8'
+              '\n'.join(f'{index:02d}\t{start}\t{end}' for index,(start,end) in enumerate(segments)),
+              encoding='utf-8',
           )
           Path('middle_manifest.txt').write_text(
               'segments=38\nexpected_duration_seconds=1058\n' +
-              '\n'.join(f'{i+1:02d}: {a}-{b} ({b-a}s)' for i,(a,b) in enumerate(segments)) + '\n',
+              '\n'.join(
+                  f'{index+1:02d}: {start}-{end} ({end-start}s)'
+                  for index,(start,end) in enumerate(segments)
+              ) + '\n',
               encoding='utf-8',
           )
           PY
@@ -229,11 +197,13 @@ jobs:
           : > concat.txt
           while IFS=$'\t' read -r idx start end; do
             duration=$((end-start))
-            ffmpeg -hide_banner -loglevel error -y -ss "$start" -i "$INPUT" -t "$duration" \
+            ffmpeg -hide_banner -loglevel error -y \
+              -ss "$start" -i "$INPUT" -t "$duration" \
               -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p" \
               -af "aresample=48000:async=1:first_pts=0,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo" \
               -c:v libx264 -preset veryfast -crf 18 -profile:v high -level 4.1 \
-              -c:a aac -b:a 192k -ar 48000 -ac 2 "rendered_segments/seg_${idx}.mp4"
+              -c:a aac -b:a 192k -ar 48000 -ac 2 \
+              "rendered_segments/seg_${idx}.mp4"
             printf "file '%s'\n" "$PWD/rendered_segments/seg_${idx}.mp4" >> concat.txt
           done < segments.tsv
           ffmpeg -hide_banner -loglevel error -y \
@@ -251,7 +221,7 @@ jobs:
           ffmpeg -v error -i middle_clean.mp4 -f null -
           sha256sum middle_clean.mp4 | tee middle_clean.sha256
 
-      - name: Upload only a verified output, plus diagnostics
+      - name: Upload verified output or diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
