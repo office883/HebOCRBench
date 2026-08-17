@@ -68,3 +68,23 @@ def test_operational_metrics_aggregate_prediction_timings(gold_page):
     assert operational["latency_ms_p50"] == 200.0
     assert operational["latency_ms_p95"] == 290.0
     assert operational["throughput_pages_per_minute"] == 300.0
+
+
+def test_conformance_policy_can_separate_quality_from_hard_unicode_gates():
+    config = BenchmarkConfig.from_mapping(
+        {
+            "conformance": {
+                "gate_quality_metrics": False,
+                "gate_all_bidi_controls": False,
+                "min_visual_order_gain": 0.25,
+                "max_visual_order_error_rate": 0.25,
+                "max_unsafe_bidi_control_count": 0,
+            }
+        }
+    )
+
+    assert config.conformance.gate_quality_metrics is False
+    assert config.conformance.gate_all_bidi_controls is False
+    assert config.conformance.min_visual_order_gain == 0.25
+    assert config.conformance.max_visual_order_error_rate == 0.25
+    assert config.conformance.max_unsafe_bidi_control_count == 0

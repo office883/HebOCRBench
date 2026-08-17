@@ -49,8 +49,10 @@ def _metrics(track_id):
             {
                 "conformance": {
                     "status": "conformant",
+                    "quality_status": "meets_targets",
                     "strict_line_exact_rate": 1.0,
                     "failed_checks": [],
+                    "quality_failed_checks": [],
                 },
                 "bidi": {
                     "ltr_run_exact_rate": 1.0,
@@ -212,3 +214,17 @@ def test_incomplete_robustness_pairs_make_metrics_invalid():
 
     assert result["status"] == "invalid_metrics"
     assert "pair coverage" in result["reason"]
+
+
+def test_rankable_score_preserves_bidi_quality_warnings():
+    suite = _suite()
+    reports = _reports(suite)
+    reports[0] = deepcopy(reports[0])
+    reports[0]["metrics"]["conformance"]["quality_status"] = "below_targets"
+    reports[0]["metrics"]["conformance"]["quality_failed_checks"] = ["numeric_exact_rate>=0.995"]
+
+    result = combine_modern_track_reports(reports, suite_lock=suite)
+
+    assert result["status"] == "rankable"
+    assert result["bidi_quality_status"] == "below_targets"
+    assert result["quality_warnings"] == ["numeric_exact_rate>=0.995"]

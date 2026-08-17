@@ -9,12 +9,17 @@ matching:
 
 conformance:
   diagnostic_track: bidi_diagnostic
+  gate_quality_metrics: false
+  gate_all_bidi_controls: false
   min_exact_line_rate: 0.95
   min_ltr_run_exact_rate: 0.98
   min_numeric_exact_rate: 0.99
   min_bracket_exact_rate: 0.99
+  min_visual_order_gain: 0.25
+  max_visual_order_error_rate: 0.25
   max_visual_order_failure_count: 0
   max_bidi_control_count: 0
+  max_unsafe_bidi_control_count: 0
   max_unbalanced_bidi_controls: 0
 
 statistics:

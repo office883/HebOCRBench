@@ -62,22 +62,54 @@ def visual_proxy(text: str) -> str:
     return _fallback_visual_proxy(text)
 
 
-def visual_order_diagnostic(reference: str, prediction: str) -> dict[str, object]:
+def visual_order_diagnostic(
+    reference: str,
+    prediction: str,
+    *,
+    min_visual_order_gain: float = 0.0,
+    max_visual_order_error_rate: float = 1.0,
+) -> dict[str, object]:
+    """Detect high-confidence visual-order storage without rescuing the score.
+
+    A prediction is only treated as a conformance failure when it is both
+    materially closer to a visual/reversed reference and reasonably close to
+    that visual form. This prevents unrelated OCR noise from being mistaken
+    for a BiDi storage error.
+    """
+
+    for name, value in (
+        ("min_visual_order_gain", min_visual_order_gain),
+        ("max_visual_order_error_rate", max_visual_order_error_rate),
+    ):
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name} must be in [0, 1], got {value}")
+
     ref = normalize_strict(reference)
     pred = normalize_strict(prediction)
-    logical = align_sequences(graphemes(ref), graphemes(pred))
+    ref_graphemes = graphemes(ref)
+    pred_graphemes = graphemes(pred)
+    logical = align_sequences(ref_graphemes, pred_graphemes)
     display_ref = visual_proxy(ref)
-    visual = align_sequences(graphemes(display_ref), graphemes(pred))
-    reversed_ref = "".join(reversed(graphemes(ref)))
-    reversed_alignment = align_sequences(graphemes(reversed_ref), graphemes(pred))
+    visual = align_sequences(graphemes(display_ref), pred_graphemes)
+    reversed_ref = "".join(reversed(ref_graphemes))
+    reversed_alignment = align_sequences(graphemes(reversed_ref), pred_graphemes)
     visual_rate = min(error_rate(visual), error_rate(reversed_alignment))
     logical_rate = error_rate(logical)
-    suspected = len(graphemes(ref)) >= 2 and visual_rate + 1e-12 < logical_rate
+    gain = logical_rate - visual_rate
+    candidate = len(ref_graphemes) >= 2 and gain > 1e-12
+    suspected = (
+        candidate
+        and gain + 1e-12 >= min_visual_order_gain
+        and visual_rate <= max_visual_order_error_rate + 1e-12
+    )
     return {
         "logical_error_rate": logical_rate,
         "visual_error_rate": visual_rate,
+        "visual_order_candidate": candidate,
         "visual_order_suspected": suspected,
-        "visual_order_gain": logical_rate - visual_rate,
+        "visual_order_gain": gain,
+        "min_visual_order_gain": min_visual_order_gain,
+        "max_visual_order_error_rate": max_visual_order_error_rate,
         "visual_proxy": display_ref,
         "strict_score_changed": False,
     }

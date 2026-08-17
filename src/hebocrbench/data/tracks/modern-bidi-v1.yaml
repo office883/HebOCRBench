@@ -1,9 +1,9 @@
 schema_version: '1.0'
 track:
   id: modern-bidi-v1
-  version: 1.0.0
+  version: 1.1.0
   title: Modern Hebrew Unicode and BiDi conformance
-  description: Strict logical-order evaluation of Hebrew with numbers, Latin runs, URLs, identifiers, punctuation and brackets.
+  description: Strict logical-order evaluation of Hebrew; recognition quality is scored separately from hard Unicode and BiDi conformance.
   official: true
   task: unicode-conformance
   prediction_mode: unicode-conformance
@@ -11,6 +11,12 @@ track:
   required_prediction_fields: [page_id, regions, regions.lines.text]
   primary_metrics:
     - conformance.status
+    - conformance.quality_status
+    - conformance.hard_failed_checks
+    - conformance.quality_failed_checks
+    - conformance.visual_order_failure_count
+    - conformance.unsafe_bidi_control_count
+    - conformance.unbalanced_bidi_controls
     - conformance.strict_line_exact_rate
     - bidi.ltr_run_exact_rate
     - bidi.numeric_exact_rate
@@ -21,12 +27,17 @@ matching:
   region_iou_threshold: 0.50
 conformance:
   diagnostic_track: modern_bidi
+  gate_quality_metrics: false
+  gate_all_bidi_controls: false
   min_exact_line_rate: 0.98
   min_ltr_run_exact_rate: 0.99
   min_numeric_exact_rate: 0.995
   min_bracket_exact_rate: 0.995
+  min_visual_order_gain: 0.25
+  max_visual_order_error_rate: 0.25
   max_visual_order_failure_count: 0
   max_bidi_control_count: 0
+  max_unsafe_bidi_control_count: 0
   max_unbalanced_bidi_controls: 0
 statistics:
   bootstrap_samples: 2000

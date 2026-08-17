@@ -41,3 +41,16 @@ def test_brackets_are_compared_semantically_not_by_visual_mirroring():
     assert good["exact"]
     assert not bad["exact"]
     assert bad["error_rate"] > 0
+
+
+def test_noisy_text_is_not_called_visual_order_from_a_small_accidental_gain():
+    result = visual_order_diagnostic(
+        "בשנת 2026 הופעלה גרסה OCR-v2.1.",
+        "OCR-v2.1 טקסט אקראי",
+        min_visual_order_gain=0.25,
+        max_visual_order_error_rate=0.25,
+    )
+
+    assert result["visual_order_gain"] > 0
+    assert result["visual_error_rate"] > 0.25
+    assert not result["visual_order_suspected"]

@@ -26,9 +26,14 @@ ID mappings are not included.
 
 Both blind Modern runs cover all 34,267 inputs with zero runner or API
 failures, and both were admitted with recomputed metrics against the locked
-suite. Both are honestly reported as `non_conformant` because they failed
-mandatory BiDi gates, so neither receives a headline score. The compact public
-results pack also reports all 2,264 items in each model's five separate
+suite. The immutable public `v1.0.0` results remain `non_conformant` under the
+original track policy, which treated recognition exactness and every BiDi
+control as hard admission gates. Main now carries `modern-bidi-v1` version
+`1.1.0`, which separates recognition quality from hard logical-order
+conformance. Replacement reports may be produced by rerunning the models or by
+rescoring retained raw predictions; the compact public pack itself omits those
+predictions. The compact public results pack also reports all 2,264 items in
+each model's five separate
 extension/diagnostic tracks. Those tracks are never blended or ranked. The pack
 contains aggregate metrics and exact score files, while omitting gold, raw
 predictions, images, organizer maps and key material.
@@ -78,6 +83,32 @@ For example, the visible RTL sentence:
 
 is stored in normal logical order. `2026` and `OCR-v2.1` retain their internal LTR order. Coordinates remain ordinary image coordinates; reading order is represented explicitly.
 
+## BiDi admission versus OCR quality
+
+Track contract `modern-bidi-v1` version `1.1.0` has two explicit layers.
+
+Hard conformance gates cover only structural failures:
+
+- a high-confidence visual-order prediction, where the prediction is at least
+  `0.25` closer to the visual or reversed reference than to logical order and
+  its visual-order error rate is at most `0.25`;
+- directional embeddings or overrides, including `LRE`, `RLE`, `PDF`, `LRO`
+  and `RLO`;
+- unbalanced embedding or isolate controls.
+
+Recognition and hygiene targets remain visible but do not block ranking under
+the official `1.1.0` policy:
+
+- strict line exactness;
+- Latin/LTR-run, numeric and bracket exactness;
+- a zero-control target for directional marks and balanced isolates.
+
+Thus a mistaken digit, letter, bracket or punctuation mark lowers the BiDi
+component instead of masquerading as a Unicode violation. `LRM`, `RLM`, `ALM`
+and balanced isolates are reported as controls but are not hard failures. The
+strict scorer still removes directional controls before edit distance; it never
+reverses text or chooses the better of logical and visual order.
+
 ## Official tracks and coverage targets
 
 | Track | Evidence | Reporting |
@@ -94,7 +125,7 @@ is stored in normal logical order. `2026` and `OCR-v2.1` retain their internal L
 | `biblical-niqqud-synthetic-diagnostic-v1` | 500 held-out synthetic niqqud lines; no cantillation | non-rankable diagnostic |
 | `rashi-print-synthetic-diagnostic-v1` | 500 held-out synthetic Noto Rashi lines | non-rankable diagnostic |
 
-The printed-document headline is a weighted geometric score over the five headline tracks. A model that fails BiDi conformance or completely collapses on one structural track cannot hide behind a good CER on easy lines.
+The printed-document headline is a weighted geometric score over the five headline tracks. A model with a confirmed logical-order conformance failure, or a complete collapse on one structural track, cannot hide behind a good CER on easy lines. Ordinary OCR exactness errors remain inside the score rather than acting as admission gates.
 
 ## Headline weights
 

@@ -24,6 +24,12 @@ EXPECTED = [
 
 
 def test_official_modern_tracks_lock_identity_policy():
+    bidi = load_track("modern-bidi-v1")
+    assert bidi.version == "1.1.0"
+    assert bidi.benchmark_config.conformance.gate_quality_metrics is False
+    assert bidi.benchmark_config.conformance.gate_all_bidi_controls is False
+    assert bidi.benchmark_config.conformance.min_visual_order_gain == 0.25
+    assert bidi.benchmark_config.conformance.max_visual_order_error_rate == 0.25
     assert load_track("modern-page-ocr-v1").benchmark_config.matching.use_shared_ids is False
     assert load_track("modern-tables-v1").benchmark_config.matching.use_shared_ids is False
     oracle = load_track("modern-line-recognition-v1")
@@ -49,6 +55,7 @@ def test_official_modern_tracks_lock_identity_policy():
 
 def test_authoritative_track_lock_is_generated_from_yaml_and_matches_package():
     expected = json.loads((ROOT / "tracks" / "tracks.lock.json").read_text(encoding="utf-8"))
+    assert expected["tracks_version"] == "1.1.0"
     assert track_lock_payload(ROOT / "tracks") == expected
     report = verify_track_lock(ROOT / "tracks")
     assert report.valid
