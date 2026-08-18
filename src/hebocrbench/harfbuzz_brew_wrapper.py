@@ -9,8 +9,9 @@ import shutil
 import stat
 
 
-WRAPPER_MARKER = "HEBOCRBENCH_HARFBUZZ_14_3_WRAPPER_V2"
+WRAPPER_MARKER = "HEBOCRBENCH_HARFBUZZ_14_3_WRAPPER_V3"
 HARFBUZZ_VERSION = "14.3.0"
+HISTORICAL_BOTTLE_NAME = "harfbuzz--14.3.0.arm64_tahoe.bottle.tar.gz"
 
 
 def brew_wrapper_script(
@@ -19,12 +20,13 @@ def brew_wrapper_script(
     bottle: Path,
     prefix: Path,
 ) -> str:
-    """Return a narrow wrapper that pins HarfBuzz around dependency installs."""
+    """Return a narrow wrapper that pours the pinned local bottle when needed."""
 
     real = shlex.quote(str(real_brew))
     bottle_arg = shlex.quote(str(bottle))
     prefix_arg = shlex.quote(str(prefix))
     version = shlex.quote(HARFBUZZ_VERSION)
+    bottle_name = shlex.quote(HISTORICAL_BOTTLE_NAME)
     return f"""#!/bin/bash
 # {WRAPPER_MARKER}
 set -euo pipefail
@@ -33,25 +35,21 @@ BOTTLE={bottle_arg}
 PREFIX={prefix_arg}
 CELLAR="$PREFIX/Cellar"
 VERSION={version}
+BOTTLE_NAME={bottle_name}
+LOCAL_BOTTLE="$PREFIX/var/homebrew/cache/$BOTTLE_NAME"
 
 restore_historical_harfbuzz() {{
-  echo "[hebocrbench] restoring HarfBuzz $VERSION from $BOTTLE" >&2
+  echo "[hebocrbench] pouring HarfBuzz $VERSION from pinned local bottle" >&2
   set -x
-  "$REAL_BREW" unlink harfbuzz >/dev/null 2>&1 || true
-  mkdir -p "$CELLAR/harfbuzz"
-  find "$CELLAR/harfbuzz" -mindepth 1 -maxdepth 1 \
-    ! -name "$VERSION" -exec rm -rf {{}} +
-  rm -rf "$CELLAR/harfbuzz/$VERSION"
-  tar -tzf "$BOTTLE" | sed -n '1,20p' >&2
-  tar -xzf "$BOTTLE" -C "$CELLAR"
-  find "$CELLAR/harfbuzz" -maxdepth 2 -print >&2
+  mkdir -p "$(dirname "$LOCAL_BOTTLE")"
+  cp "$BOTTLE" "$LOCAL_BOTTLE"
+  "$REAL_BREW" uninstall --ignore-dependencies --force harfbuzz >/dev/null 2>&1 \
+    || true
+  "$REAL_BREW" install --force-bottle "$LOCAL_BOTTLE"
   test -d "$CELLAR/harfbuzz/$VERSION"
   test -f "$CELLAR/harfbuzz/$VERSION/INSTALL_RECEIPT.json"
-  "$REAL_BREW" link --overwrite --force harfbuzz
-  ls -ld "$PREFIX/opt/harfbuzz" >&2
-  test "$(basename "$(readlink "$PREFIX/opt/harfbuzz")")" = "$VERSION" \
-    || test "$(basename "$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' \
-      "$PREFIX/opt/harfbuzz")")" = "$VERSION"
+  test "$(basename "$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' \
+    "$PREFIX/opt/harfbuzz")")" = "$VERSION"
   set +x
 }}
 
