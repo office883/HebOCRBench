@@ -1,0 +1,58 @@
+name: Launch isolated Tesseract v1.1.0 baseline workflow
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/bootstrap-tesseract-v1-1-main.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: launch-tesseract-v1-1
+  cancel-in-progress: false
+
+jobs:
+  launch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out the isolated run branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: agent/tesseract-v1-1-run
+          fetch-depth: 0
+
+      - name: Execute the reviewed branch bootstrap script
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check PyYAML==6.0.3
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          workflow = yaml.safe_load(
+              Path(".github/workflows/bootstrap-tesseract-v1-1.yml").read_text(
+                  encoding="utf-8"
+              )
+          )
+          script = workflow["jobs"]["patch-release-workflow"]["steps"][1]["run"]
+          Path("/tmp/branch-bootstrap.sh").write_text(script, encoding="utf-8")
+          PY
+          bash /tmp/branch-bootstrap.sh
+
+      - name: Remove this one-shot launcher from main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git switch --force-create main origin/main
+          git rm .github/workflows/bootstrap-tesseract-v1-1-main.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: remove one-shot Tesseract baseline launcher"
+          git push origin HEAD:main
