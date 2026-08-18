@@ -30,43 +30,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          hook_files=(
+            src/hebocrbench/harfbuzz_14_3_pin.py
+            src/hebocrbench/harfbuzz_brew_wrapper.py
+            src/hebocrbench/tesseract_v11_release_hook.py
+            src/sitecustomize.py
+            tests/test_harfbuzz_14_3_pin.py
+            tests/test_harfbuzz_brew_wrapper.py
+            tests/test_tesseract_v11_release_hook.py
+          )
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev,bidi,corpus]'
-          python -m ruff format \
-            src/hebocrbench/harfbuzz_14_3_pin.py \
-            src/hebocrbench/tesseract_v11_release_hook.py \
-            src/sitecustomize.py \
-            tests/test_harfbuzz_14_3_pin.py \
-            tests/test_tesseract_v11_release_hook.py
-          python -m ruff check \
-            src/hebocrbench/harfbuzz_14_3_pin.py \
-            src/hebocrbench/tesseract_v11_release_hook.py \
-            src/sitecustomize.py \
-            tests/test_harfbuzz_14_3_pin.py \
-            tests/test_tesseract_v11_release_hook.py
+          python -m ruff format "${hook_files[@]}"
+          python -m ruff check "${hook_files[@]}"
           python -m pytest -q \
             tests/test_harfbuzz_14_3_pin.py \
+            tests/test_harfbuzz_brew_wrapper.py \
             tests/test_tesseract_v11_release_hook.py
           python -m compileall -q \
             src/hebocrbench/harfbuzz_14_3_pin.py \
+            src/hebocrbench/harfbuzz_brew_wrapper.py \
             src/hebocrbench/tesseract_v11_release_hook.py \
             src/sitecustomize.py
 
-          if ! git diff --quiet -- \
-            src/hebocrbench/harfbuzz_14_3_pin.py \
-            src/hebocrbench/tesseract_v11_release_hook.py \
-            src/sitecustomize.py \
-            tests/test_harfbuzz_14_3_pin.py \
-            tests/test_tesseract_v11_release_hook.py; then
+          if ! git diff --quiet -- "${hook_files[@]}"; then
             git config user.name "github-actions[bot]"
             git config user.email \
               "41898282+github-actions[bot]@users.noreply.github.com"
-            git add \
-              src/hebocrbench/harfbuzz_14_3_pin.py \
-              src/hebocrbench/tesseract_v11_release_hook.py \
-              src/sitecustomize.py \
-              tests/test_harfbuzz_14_3_pin.py \
-              tests/test_tesseract_v11_release_hook.py
+            git add "${hook_files[@]}"
             git commit -m "style: apply Ruff formatting to isolated run hooks"
             git push origin HEAD:agent/tesseract-v1-1-run
           fi
