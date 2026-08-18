@@ -32,7 +32,7 @@ def test_install_brew_wrapper_backs_up_regular_executable(tmp_path: Path) -> Non
     assert str(prefix) in installed
 
 
-def test_wrapper_pours_local_bottle_and_restores_after_dependency_install(
+def test_wrapper_pours_relative_local_bottle_and_restores_after_dependency_install(
     tmp_path: Path,
 ) -> None:
     script = brew_wrapper_script(
@@ -44,7 +44,8 @@ def test_wrapper_pours_local_bottle_and_restores_after_dependency_install(
     assert HISTORICAL_BOTTLE_NAME in script
     assert 'cp "$BOTTLE" "$LOCAL_BOTTLE"' in script
     assert "uninstall --ignore-dependencies --force harfbuzz" in script
-    assert 'install --force-bottle "$LOCAL_BOTTLE"' in script
+    assert 'cd "$(dirname "$LOCAL_BOTTLE")"' in script
+    assert 'install --force-bottle "./$BOTTLE_NAME"' in script
     assert 'test -f "$CELLAR/harfbuzz/$VERSION/INSTALL_RECEIPT.json"' in script
     assert 'if [[ "$#" -ge 1 && "$1" == "install" ]]' in script
     assert "restore_historical_harfbuzz" in script
