@@ -27,15 +27,10 @@ from typing import Mapping, Sequence
 
 RUN_BRANCH = "agent/tesseract-v1-1-run"
 HARFBUZZ_VERSION = "14.3.0"
-HARFBUZZ_BOTTLE_SHA256 = (
-    "a4d727f73af8892743817d9557e139866060de41302e1e6461908e9d31e2aa0a"
-)
-HARFBUZZ_FORMULA_SHA256 = (
-    "188aea0a97665d3a2a39ed72b37b249252f25ae92f84e4c9d4054f004b27f936"
-)
+HARFBUZZ_BOTTLE_SHA256 = "a4d727f73af8892743817d9557e139866060de41302e1e6461908e9d31e2aa0a"
+HARFBUZZ_FORMULA_SHA256 = "188aea0a97665d3a2a39ed72b37b249252f25ae92f84e4c9d4054f004b27f936"
 HARFBUZZ_BLOB_URL = (
-    "https://ghcr.io/v2/homebrew/core/harfbuzz/blobs/sha256:"
-    + HARFBUZZ_BOTTLE_SHA256
+    "https://ghcr.io/v2/homebrew/core/harfbuzz/blobs/sha256:" + HARFBUZZ_BOTTLE_SHA256
 )
 _METADATA_NAME = "harfbuzz-formula.json"
 _WRAPPER_MARKER = "HEBOCRBENCH_HARFBUZZ_14_3_WRAPPER"
@@ -67,11 +62,7 @@ def _anonymous_ghcr_token(www_authenticate: str) -> str:
     realm = values.get("realm")
     if not realm:
         raise RuntimeError("GHCR authentication challenge has no realm")
-    query = {
-        key: values[key]
-        for key in ("service", "scope")
-        if values.get(key)
-    }
+    query = {key: values[key] for key in ("service", "scope") if values.get(key)}
     token_url = realm + ("?" + urllib.parse.urlencode(query) if query else "")
     with urllib.request.urlopen(_request(token_url), timeout=60) as response:
         payload = json.load(response)
@@ -246,8 +237,7 @@ def prepare_from_current_process() -> bool:
     rewrite_formula_metadata(metadata)
     install_brew_wrapper(Path("/opt/homebrew/bin/brew"), bottle=bottle)
     print(
-        "[hebocrbench] restored pinned HarfBuzz 14.3.0 bottle "
-        f"{HARFBUZZ_BOTTLE_SHA256}",
+        f"[hebocrbench] restored pinned HarfBuzz 14.3.0 bottle {HARFBUZZ_BOTTLE_SHA256}",
         flush=True,
     )
     return True

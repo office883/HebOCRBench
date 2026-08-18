@@ -48,9 +48,7 @@ def test_rewrite_formula_metadata_restores_certified_values(tmp_path: Path) -> N
 def test_should_prepare_is_exactly_branch_and_metadata_scoped() -> None:
     matching_env = {"GITHUB_REF": f"refs/heads/{RUN_BRANCH}"}
 
-    assert should_prepare(
-        ["-", "/tmp/harfbuzz-formula.json"], matching_env
-    )
+    assert should_prepare(["-", "/tmp/harfbuzz-formula.json"], matching_env)
     assert not should_prepare(["-", "/tmp/other.json"], matching_env)
     assert not should_prepare(
         ["-", "/tmp/harfbuzz-formula.json"],
