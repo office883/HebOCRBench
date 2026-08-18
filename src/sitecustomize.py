@@ -9,12 +9,9 @@ import sys
 
 run_branch = "agent/tesseract-v1-1-run"
 if (
-    (
-        os.environ.get("GITHUB_REF_NAME") == run_branch
-        or os.environ.get("GITHUB_REF") == f"refs/heads/{run_branch}"
-    )
-    and Path(sys.argv[0]).name == "build_v1_release.py"
-):
+    os.environ.get("GITHUB_REF_NAME") == run_branch
+    or os.environ.get("GITHUB_REF") == f"refs/heads/{run_branch}"
+) and Path(sys.argv[0]).name == "build_v1_release.py":
     from hebocrbench.tesseract_v11_release_hook import install_release_hook
 
     install_release_hook()

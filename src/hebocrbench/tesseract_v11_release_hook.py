@@ -105,9 +105,7 @@ def _install_tesseract() -> tuple[str, str]:
     executable = shutil.which("tesseract")
     if executable is None:
         raise RuntimeError("Homebrew completed but tesseract is not on PATH")
-    version = _run(
-        [executable, "--version"], env=env, capture_output=True
-    ).stdout.splitlines()[0]
+    version = _run([executable, "--version"], env=env, capture_output=True).stdout.splitlines()[0]
     expected = f"tesseract {TESSERACT_VERSION}"
     if version != expected:
         raise RuntimeError(f"expected {expected!r}, got {version!r}")
@@ -185,17 +183,13 @@ def _assert_complete_run(summary: dict[str, object]) -> tuple[dict[str, object],
     if selected != 34267:
         raise RuntimeError(f"expected 34,267 evaluated inputs, got {selected}")
     if failures != 0 or api_failures != 0:
-        raise RuntimeError(
-            f"baseline has failures: runner={failures}, api={api_failures}"
-        )
+        raise RuntimeError(f"baseline has failures: runner={failures}, api={api_failures}")
 
     score = summary.get("modern_score")
     if not isinstance(score, dict):
         raise RuntimeError("baseline summary has no Modern score")
     if score.get("missing_tracks") != []:
-        raise RuntimeError(
-            f"Modern score is missing tracks: {score.get('missing_tracks')}"
-        )
+        raise RuntimeError(f"Modern score is missing tracks: {score.get('missing_tracks')}")
     admission = score.get("score_admission")
     if not isinstance(admission, dict):
         raise RuntimeError("Modern score has no score_admission evidence")
@@ -211,8 +205,7 @@ def _assert_complete_run(summary: dict[str, object]) -> tuple[dict[str, object],
     for field, expected in required_admission.items():
         if admission.get(field) != expected:
             raise RuntimeError(
-                f"score_admission.{field} must be {expected!r}, "
-                f"got {admission.get(field)!r}"
+                f"score_admission.{field} must be {expected!r}, got {admission.get(field)!r}"
             )
     return score, selected
 
@@ -239,9 +232,7 @@ def _run_full_baseline() -> None:
             capture_output=True,
         ).stdout.splitlines()
         if "heb" not in languages or "eng" not in languages:
-            raise RuntimeError(
-                f"pinned tessdata is not visible to Tesseract: {languages}"
-            )
+            raise RuntimeError(f"pinned tessdata is not visible to Tesseract: {languages}")
 
         run_root = runner_temp / "tesseract-private-run-v1.1.0"
         if run_root.exists():
