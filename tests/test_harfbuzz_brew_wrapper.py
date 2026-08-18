@@ -36,15 +36,15 @@ def test_install_brew_wrapper_backs_up_regular_executable(tmp_path: Path) -> Non
 def test_homebrew_pour_script_uses_local_bottle_loader_and_formula_installer() -> None:
     script = homebrew_pour_script()
 
-    assert 'formula = Formulary.factory(bottle_path)' in script
-    assert 'force_bottle: true' in script
-    assert 'ignore_deps: true' in script
-    assert 'link_keg: true' in script
-    assert 'installer.prelude' in script
-    assert 'installer.install' in script
-    assert 'installer.finish' in script
-    assert 'tab.built_as_bottle' in script
-    assert 'tab.poured_from_bottle' in script
+    assert "formula = Formulary.factory(bottle_path)" in script
+    assert "force_bottle: true" in script
+    assert "ignore_deps: true" in script
+    assert "link_keg: true" in script
+    assert "installer.prelude" in script
+    assert "installer.install" in script
+    assert "installer.finish" in script
+    assert "tab.built_as_bottle" in script
+    assert "tab.poured_from_bottle" in script
 
 
 def test_wrapper_pours_with_homebrew_ruby_and_restores_after_dependency_install(
