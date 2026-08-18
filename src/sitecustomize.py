@@ -22,6 +22,9 @@ if branch_matches:
     from hebocrbench.tesseract_v11_gate import is_certified_release_invocation
 
     if is_certified_release_invocation():
+        from hebocrbench.tesseract_v11_tessdata_configs import patch_tessdata_download
+
+        patch_tessdata_download()
         from hebocrbench.tesseract_v11_release_hook import install_release_hook
 
         install_release_hook()
