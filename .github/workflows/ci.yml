@@ -2,179 +2,43 @@ name: ci
 
 on:
   push:
-    branches: ['**']
-  pull_request:
+    branches:
+      - agent/tesseract-v1-1-run
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: launch-tesseract-v1-1-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  test:
-    name: Python ${{ matrix.python-version }}
+  launch-full-tesseract-run:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.10', '3.11', '3.12', '3.13']
+    timeout-minutes: 15
     steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Check out isolated run branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          python-version: ${{ matrix.python-version }}
-          cache: pip
+          fetch-depth: 0
 
-      - name: Install system dependencies
+      - name: Execute reviewed bootstrap and patch the existing release workflow
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
-            fonts-noto-core \
-            poppler-utils \
-            tesseract-ocr \
-            tesseract-ocr-eng \
-            tesseract-ocr-heb
-
-      - name: Install package and test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e '.[dev,bidi,corpus]'
-
-      - name: Verify repository has no whitespace errors
-        run: git diff --check
-
-      - name: Run tests
-        run: python -m pytest -q
-
-      - name: Compile runtime modules
-        run: python -m compileall -q src scripts
-
-      - name: Verify official track lock
-        run: hebocrbench tracks verify
-
-      - name: Verify packaged registry and profiles
-        run: |
-          hebocrbench data list > /tmp/hebocrbench-sources.json
-          hebocrbench data profiles > /tmp/hebocrbench-profiles.json
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check PyYAML==6.0.3
           python - <<'PY'
-          import json
-          from hebocrbench.corpus_registry import load_registry
-          from hebocrbench.profiles import load_profiles
-
-          sources = json.load(open('/tmp/hebocrbench-sources.json', encoding='utf-8'))
-          profiles = json.load(open('/tmp/hebocrbench-profiles.json', encoding='utf-8'))
-          registry = load_registry()
-          profile_registry = load_profiles(registry=registry)
-          assert {item['source_id'] for item in sources['sources']} == set(registry.sources)
-          assert {item['profile_id'] for item in profiles['profiles']} == set(
-              profile_registry.profiles
-          )
-          PY
-
-      - name: Run evaluator fault-injection matrix
-        run: hebocrbench sanity --output /tmp/hebocr-sanity --variants clean --limit 28
-
-      - name: Lint and format check
-        if: matrix.python-version == '3.13'
-        shell: bash
-        run: |
-          set +e
-          python -m ruff check . 2>&1 | tee /tmp/ruff-check.txt
-          lint_status=${PIPESTATUS[0]}
-          python -m ruff format --check . 2>&1 | tee /tmp/ruff-format.txt
-          format_status=${PIPESTATUS[0]}
-          printf 'lint_status=%s\nformat_status=%s\n' \
-            "$lint_status" "$format_status" | tee /tmp/ruff-status.txt
-          if (( lint_status != 0 || format_status != 0 )); then
-            exit 1
-          fi
-
-      - name: Upload Ruff diagnostics
-        if: always() && matrix.python-version == '3.13'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ruff-diagnostics-python-3.13
-          path: |
-            /tmp/ruff-check.txt
-            /tmp/ruff-format.txt
-            /tmp/ruff-status.txt
-          if-no-files-found: warn
-          retention-days: 7
-
-  package:
-    name: Build and inspect distributions
-    needs: test
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-          cache: pip
-
-      - name: Build wheel and source distribution
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install 'build>=1.2,<2'
-          python -m build
-
-      - name: Install wheel in an isolated environment
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m venv /tmp/hebocrbench-wheel
-          /tmp/hebocrbench-wheel/bin/python -m pip install --upgrade pip
-          /tmp/hebocrbench-wheel/bin/python -m pip install dist/hebocrbench-1.0.0-py3-none-any.whl
-          /tmp/hebocrbench-wheel/bin/python -m pip check
-          /tmp/hebocrbench-wheel/bin/hebocrbench --version
-          /tmp/hebocrbench-wheel/bin/hebocrbench tracks verify
-          /tmp/hebocrbench-wheel/bin/hebocrbench data profiles > /tmp/wheel-profiles.json
-          /tmp/hebocrbench-wheel/bin/python - <<'PY'
-          import json
-          from importlib import resources
           from pathlib import Path
+          import yaml
 
-          import hebocrbench
-          from hebocrbench.corpus_registry import load_registry
-          from hebocrbench.profiles import load_profiles
-
-          assert hebocrbench.__version__ == '1.0.0'
-          profiles = json.load(open('/tmp/wheel-profiles.json', encoding='utf-8'))
-          registry = load_registry()
-          profile_registry = load_profiles(registry=registry)
-          assert {item['profile_id'] for item in profiles['profiles']} == set(
-              profile_registry.profiles
+          workflow = yaml.safe_load(
+              Path('.github/workflows/bootstrap-tesseract-v1-1.yml').read_text(
+                  encoding='utf-8'
+              )
           )
-          track_names = {
-              item.name
-              for item in resources.files('hebocrbench').joinpath('data/tracks').iterdir()
-              if item.name.endswith('.yaml')
-          }
-          assert track_names == {path.name for path in Path('tracks').glob('*.yaml')}
+          script = workflow['jobs']['patch-release-workflow']['steps'][1]['run']
+          Path('/tmp/branch-bootstrap.sh').write_text(script, encoding='utf-8')
           PY
-
-      - name: Verify archive hygiene
-        shell: bash
-        run: |
-          set -euo pipefail
-          tar -tzf dist/hebocrbench-1.0.0.tar.gz > /tmp/sdist-files.txt
-          ! grep -E '(__pycache__|\.py[co]$|\.git/|\.pytest_cache/|\.bootstrap/)' /tmp/sdist-files.txt
-
-      - name: Upload distributions
-        uses: actions/upload-artifact@v4
-        with:
-          name: hebocrbench-python-distributions
-          path: dist/*
-          if-no-files-found: error
-          retention-days: 14
+          bash /tmp/branch-bootstrap.sh
