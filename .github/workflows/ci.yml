@@ -44,6 +44,10 @@ jobs:
               )
           )
           script = workflow['jobs']['patch-release-workflow']['steps'][1]['run']
+          script = script.replace(
+              'git add -u .github/workflows/bootstrap-tesseract-v1-1.yml\n',
+              '',
+          )
           Path('/tmp/branch-bootstrap.sh').write_text(script, encoding='utf-8')
           PY
           bash /tmp/branch-bootstrap.sh
