@@ -35,18 +35,24 @@ CELLAR="$PREFIX/Cellar"
 VERSION={version}
 
 restore_historical_harfbuzz() {{
+  echo "[hebocrbench] restoring HarfBuzz $VERSION from $BOTTLE" >&2
+  set -x
   "$REAL_BREW" unlink harfbuzz >/dev/null 2>&1 || true
   mkdir -p "$CELLAR/harfbuzz"
   find "$CELLAR/harfbuzz" -mindepth 1 -maxdepth 1 \
     ! -name "$VERSION" -exec rm -rf {{}} +
   rm -rf "$CELLAR/harfbuzz/$VERSION"
+  tar -tzf "$BOTTLE" | sed -n '1,20p' >&2
   tar -xzf "$BOTTLE" -C "$CELLAR"
+  find "$CELLAR/harfbuzz" -maxdepth 2 -print >&2
   test -d "$CELLAR/harfbuzz/$VERSION"
   test -f "$CELLAR/harfbuzz/$VERSION/INSTALL_RECEIPT.json"
   "$REAL_BREW" link --overwrite --force harfbuzz
+  ls -ld "$PREFIX/opt/harfbuzz" >&2
   test "$(basename "$(readlink "$PREFIX/opt/harfbuzz")")" = "$VERSION" \
     || test "$(basename "$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' \
       "$PREFIX/opt/harfbuzz")")" = "$VERSION"
+  set +x
 }}
 
 if [[ "$#" -eq 4 && "$1" == "fetch" && "$2" == "--force" \
