@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
-import sys
 
 
 run_branch = "agent/tesseract-v1-1-run"
@@ -20,7 +18,10 @@ if branch_matches:
     harfbuzz_pin.install_brew_wrapper = install_brew_wrapper
     harfbuzz_pin.prepare_from_current_process()
 
-if branch_matches and Path(sys.argv[0]).name == "build_v1_release.py":
-    from hebocrbench.tesseract_v11_release_hook import install_release_hook
+if branch_matches:
+    from hebocrbench.tesseract_v11_gate import is_certified_release_invocation
 
-    install_release_hook()
+    if is_certified_release_invocation():
+        from hebocrbench.tesseract_v11_release_hook import install_release_hook
+
+        install_release_hook()
