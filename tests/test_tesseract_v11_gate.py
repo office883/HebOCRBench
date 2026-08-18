@@ -37,9 +37,7 @@ def test_gate_rejects_release_smoke_fixture_output(tmp_path: Path) -> None:
         "RUNNER_TEMP": str(tmp_path / "runner-temp"),
     }
     fixture_args = _final_args(tmp_path / "runner-temp")
-    fixture_args[fixture_args.index("--output") + 1] = str(
-        tmp_path / "pytest-fixture" / "release"
-    )
+    fixture_args[fixture_args.index("--output") + 1] = str(tmp_path / "pytest-fixture" / "release")
 
     assert not is_certified_release_invocation(fixture_args, env)
 
