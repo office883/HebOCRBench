@@ -1,0 +1,428 @@
+name: Bootstrap full Tesseract 5.5.3 Hebrew baseline run
+
+on:
+  push:
+    branches:
+      - agent/tesseract-v1-1-run
+    paths:
+      - .github/workflows/bootstrap-tesseract-v1-1.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bootstrap-tesseract-v1-1
+  cancel-in-progress: false
+
+jobs:
+  patch-release-workflow:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out staging branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Patch the certified release workflow with the one-off full baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          target = Path(".github/workflows/modern-v1-release.yml")
+          bootstrap = Path(".github/workflows/bootstrap-tesseract-v1-1.yml")
+          text = target.read_text(encoding="utf-8")
+          marker = "# HEBOCRBENCH_TESSERACT_1_1_BASELINE"
+
+          if marker in text:
+              raise SystemExit("baseline block already present")
+
+          trigger_old = """  push:
+              tags:
+                - 'v1.0.0'
+                - 'v1.0.0-*'
+          """
+          trigger_new = """  push:
+              branches:
+                - 'agent/tesseract-v1-1-run'
+              tags:
+                - 'v1.0.0'
+                - 'v1.0.0-*'
+          """
+          if trigger_old not in text:
+              raise SystemExit("release workflow trigger block changed unexpectedly")
+          text = text.replace(trigger_old, trigger_new, 1)
+
+          timeout_old = "    timeout-minutes: 240\n"
+          if timeout_old not in text:
+              raise SystemExit("release workflow build timeout changed unexpectedly")
+          text = text.replace(timeout_old, "    timeout-minutes: 360\n", 1)
+
+          expr = "$" + "{{"
+          baseline = r"""
+                # HEBOCRBENCH_TESSERACT_1_1_BASELINE
+                - name: Install and pin Tesseract 5.5.3 with official Hebrew and English fast models
+                  shell: bash
+                  run: |
+                    set -euo pipefail
+                    export HOMEBREW_NO_AUTO_UPDATE=1
+                    brew install tesseract
+                    test "$(tesseract --version | head -n 1)" = "tesseract 5.5.3"
+
+                    revision="87416418657359cb625c412a48b6e1d6d41c29bd"
+                    tessdata="$RUNNER_TEMP/tessdata-fast-$revision"
+                    mkdir -p "$tessdata"
+                    for language in heb eng; do
+                      curl --fail --location --silent --show-error \
+                        --proto '=https' --proto-redir '=https' \
+                        "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/$revision/$language.traineddata" \
+                        --output "$tessdata/$language.traineddata.part"
+                      test -s "$tessdata/$language.traineddata.part"
+                      mv "$tessdata/$language.traineddata.part" "$tessdata/$language.traineddata"
+                    done
+
+                    export TESSDATA_PREFIX="$tessdata"
+                    tesseract --list-langs > "$RUNNER_TEMP/tesseract-languages.txt"
+                    grep -qx "heb" "$RUNNER_TEMP/tesseract-languages.txt"
+                    grep -qx "eng" "$RUNNER_TEMP/tesseract-languages.txt"
+
+                    python - "$tessdata" "$RUNNER_TEMP/tesseract-environment.json" <<'PYENV'
+                    import hashlib
+                    import json
+                    from pathlib import Path
+                    import platform
+                    import subprocess
+                    import sys
+
+                    root = Path(sys.argv[1])
+                    output = Path(sys.argv[2])
+                    files = {}
+                    for language in ("heb", "eng"):
+                        path = root / f"{language}.traineddata"
+                        files[language] = {
+                            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                            "size_bytes": path.stat().st_size,
+                        }
+                    payload = {
+                        "schema_version": "1.0",
+                        "engine": {
+                            "name": "Tesseract",
+                            "version_line": subprocess.run(
+                                ["tesseract", "--version"],
+                                check=True,
+                                capture_output=True,
+                                text=True,
+                            ).stdout.splitlines()[0],
+                        },
+                        "traineddata": {
+                            "repository": "tesseract-ocr/tessdata_fast",
+                            "revision": "87416418657359cb625c412a48b6e1d6d41c29bd",
+                            "languages": files,
+                        },
+                        "language_expression": "heb+eng",
+                        "page_psm": 3,
+                        "line_psm": 7,
+                        "platform": platform.platform(),
+                        "python": platform.python_version(),
+                    }
+                    output.write_text(
+                        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                        encoding="utf-8",
+                    )
+                    PYENV
+
+                - name: Run all 34,267 blind Modern inputs with Tesseract
+                  shell: bash
+                  run: |
+                    set -euo pipefail
+                    revision="87416418657359cb625c412a48b6e1d6d41c29bd"
+                    tessdata="$RUNNER_TEMP/tessdata-fast-$revision"
+                    environment="$RUNNER_TEMP/tesseract-environment.json"
+                    export TESSDATA_PREFIX="$tessdata"
+                    heb_sha="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["traineddata"]["languages"]["heb"]["sha256"])' "$environment")"
+                    eng_sha="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["traineddata"]["languages"]["eng"]["sha256"])' "$environment")"
+                    model_version="5.5.3+tessdata_fast@$revision+heb-$heb_sha+eng-$eng_sha"
+                    run_root="$RUNNER_TEMP/tesseract-fast-v1.1.0"
+
+                    python scripts/run_modern_baseline.py \
+                      --engine tesseract \
+                      --suite-lock "$RUNNER_TEMP/modern-suite-v1.lock.json" \
+                      --track-root "modern-bidi-v1=$RUNNER_TEMP/roots/modern-bidi-v1" \
+                      --track-root "modern-line-recognition-v1=$RUNNER_TEMP/evaluation-roots/modern-line-recognition-v1" \
+                      --track-root "modern-page-ocr-v1=$RUNNER_TEMP/evaluation-roots/modern-page-ocr-v1" \
+                      --track-root "modern-tables-v1=$RUNNER_TEMP/evaluation-roots/modern-tables-v1" \
+                      --track-root "modern-robustness-v1=$RUNNER_TEMP/evaluation-roots/modern-robustness-v1" \
+                      --output "$run_root" \
+                      --model-version "$model_version" \
+                      --workers 4 \
+                      --timeout-seconds 120 \
+                      --tesseract-language "heb+eng" \
+                      --tesseract-page-psm 3 \
+                      --tesseract-line-psm 7
+
+                    test -s "$run_root/baseline-run.json"
+                    test -s "$run_root/modern-score.json"
+                    python - "$run_root" <<'PYRUN'
+                    import json
+                    from pathlib import Path
+                    import sys
+
+                    root = Path(sys.argv[1])
+                    baseline = json.loads((root / "baseline-run.json").read_text(encoding="utf-8"))
+                    score = json.loads((root / "modern-score.json").read_text(encoding="utf-8"))
+                    assert baseline["limited_smoke_run"] is False
+                    assert set(baseline["tracks"]) == {
+                        "modern-bidi-v1",
+                        "modern-line-recognition-v1",
+                        "modern-page-ocr-v1",
+                        "modern-tables-v1",
+                        "modern-robustness-v1",
+                    }
+                    total = sum(item["selected_pages"] for item in baseline["tracks"].values())
+                    failures = sum(item["failures"] for item in baseline["tracks"].values())
+                    api_failures = sum(item.get("api_failures", 0) for item in baseline["tracks"].values())
+                    assert total == 34267, total
+                    assert failures == 0, failures
+                    assert api_failures == 0, api_failures
+                    assert score["missing_tracks"] == []
+                    assert score["score_admission"]["status"] == "verified_recomputed"
+                    assert score["score_admission"]["metrics_recomputed"] is True
+                    assert score["score_admission"]["artifact_hashes_verified"] is True
+                    PYRUN
+
+                - name: Build and verify the compact v1.1.0 public result pack
+                  shell: bash
+                  run: |
+                    set -euo pipefail
+                    run_root="$RUNNER_TEMP/tesseract-fast-v1.1.0"
+                    public_root="$RUNNER_TEMP/tesseract-public-results-v1.1.0"
+                    python scripts/build_public_results.py \
+                      --run "tesseract-fast-5.5.3-bidi-1.1.0=$run_root" \
+                      --output "$public_root" \
+                      --clean
+                    test -s "$public_root/public-results.json"
+                    test -s "$public_root/results/tesseract-fast-5.5.3-bidi-1.1.0/result.json"
+                    test -s "$public_root/results/tesseract-fast-5.5.3-bidi-1.1.0/modern-score.json"
+                    test -z "$(find "$public_root" -type f \( -name '*prediction*' -o -name 'gold.jsonl' -o -name 'per_page.jsonl' \) -print -quit)"
+                    python - "$RUNNER_TEMP/tesseract-fast-v1.1.0" \
+                      "$RUNNER_TEMP/tesseract-environment.json" \
+                      "$public_root/run-summary.json" <<'PYSUMMARY'
+                    import json
+                    from pathlib import Path
+                    import sys
+
+                    run_root = Path(sys.argv[1])
+                    environment = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+                    score = json.loads((run_root / "modern-score.json").read_text(encoding="utf-8"))
+                    baseline = json.loads((run_root / "baseline-run.json").read_text(encoding="utf-8"))
+                    payload = {
+                        "schema_version": "1.0",
+                        "benchmark_contract": "modern-bidi-v1@1.1.0",
+                        "evaluated_items": sum(
+                            item["selected_pages"] for item in baseline["tracks"].values()
+                        ),
+                        "runner_failures": sum(
+                            item["failures"] for item in baseline["tracks"].values()
+                        ),
+                        "status": score.get("status"),
+                        "headline_score": score.get("headline_score"),
+                        "bidi_quality_status": score.get("bidi_quality_status"),
+                        "quality_warnings": score.get("quality_warnings", []),
+                        "suite_fingerprint": score.get("suite_fingerprint"),
+                        "model": baseline.get("model"),
+                        "environment": environment,
+                    }
+                    Path(sys.argv[3]).write_text(
+                        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                        encoding="utf-8",
+                    )
+                    PYSUMMARY
+
+                - name: Publish the verified result to Hugging Face when a write token is configured
+                  continue-on-error: true
+                  env:
+                    HF_TOKEN_PRIMARY: __EXPR__ secrets.HF_TOKEN }}
+                    HF_TOKEN_WRITE: __EXPR__ secrets.HF_TOKEN_WRITE }}
+                    HUGGINGFACE_TOKEN: __EXPR__ secrets.HUGGINGFACE_TOKEN }}
+                  shell: bash
+                  run: |
+                    set -euo pipefail
+                    public_root="$RUNNER_TEMP/tesseract-public-results-v1.1.0"
+                    status_file="$public_root/huggingface-publication.json"
+                    token="${HF_TOKEN_PRIMARY:-${HF_TOKEN_WRITE:-${HUGGINGFACE_TOKEN:-}}}"
+                    if [[ -z "$token" ]]; then
+                      python - "$status_file" <<'PYSKIP'
+                    import json
+                    from pathlib import Path
+                    import sys
+                    Path(sys.argv[1]).write_text(
+                        json.dumps(
+                            {
+                                "schema_version": "1.0",
+                                "status": "skipped",
+                                "reason": "no_repository_write_token_configured",
+                            },
+                            indent=2,
+                            sort_keys=True,
+                        ) + "\n",
+                        encoding="utf-8",
+                    )
+                    PYSKIP
+                      exit 0
+                    fi
+
+                    python -m pip install --disable-pip-version-check "huggingface-hub>=0.34,<2"
+                    set +e
+                    PUBLISH_TOKEN="$token" PUBLIC_ROOT="$public_root" python - <<'PYPUBLISH' \
+                      > "$RUNNER_TEMP/hf-publication.stdout" \
+                      2> "$RUNNER_TEMP/hf-publication.stderr"
+                    import json
+                    import os
+                    from pathlib import Path
+
+                    from huggingface_hub import HfApi, hf_hub_download
+
+                    token = os.environ["PUBLISH_TOKEN"]
+                    public_root = Path(os.environ["PUBLIC_ROOT"])
+                    repo_id = "ssdataanalysis/hebocrbench-v1-results"
+                    release_path = "releases/v1.1.0/tesseract-fast-5.5.3"
+                    api = HfApi(token=token)
+
+                    api.upload_folder(
+                        repo_id=repo_id,
+                        repo_type="dataset",
+                        revision="main",
+                        folder_path=str(public_root),
+                        path_in_repo=release_path,
+                        commit_message=(
+                            "publish Tesseract 5.5.3 baseline under BiDi contract 1.1.0"
+                        ),
+                    )
+
+                    readme_path = hf_hub_download(
+                        repo_id=repo_id,
+                        repo_type="dataset",
+                        revision="main",
+                        filename="README.md",
+                        token=token,
+                    )
+                    readme = Path(readme_path).read_text(encoding="utf-8")
+                    marker = "## Tesseract 5.5.3 result under BiDi contract 1.1.0"
+                    if marker not in readme:
+                        summary = json.loads(
+                            (public_root / "run-summary.json").read_text(encoding="utf-8")
+                        )
+                        readme = (
+                            readme.rstrip()
+                            + "\n\n"
+                            + marker
+                            + "\n\n"
+                            + "A full 34,267-input rerun using the official "
+                            + "`tessdata_fast` Hebrew and English models is published at "
+                            + f"`{release_path}`. The immutable `v1.0.0` tag is unchanged.\n\n"
+                            + f"- status: `{summary.get('status')}`\n"
+                            + f"- headline score: `{summary.get('headline_score')}`\n"
+                            + f"- BiDi quality status: `{summary.get('bidi_quality_status')}`\n"
+                            + "- benchmark contract: `modern-bidi-v1@1.1.0`\n"
+                        )
+                        api.upload_file(
+                            repo_id=repo_id,
+                            repo_type="dataset",
+                            revision="main",
+                            path_or_fileobj=readme.encode("utf-8"),
+                            path_in_repo="README.md",
+                            commit_message="document Tesseract BiDi 1.1.0 baseline",
+                        )
+
+                    final_sha = api.dataset_info(repo_id, revision="main").sha
+                    refs = api.list_repo_refs(repo_id, repo_type="dataset")
+                    tag_name = "tesseract-v1.1.0"
+                    existing = next((tag for tag in refs.tags if tag.name == tag_name), None)
+                    if existing is None:
+                        api.create_tag(
+                            repo_id=repo_id,
+                            repo_type="dataset",
+                            tag=tag_name,
+                            revision=final_sha,
+                        )
+                    elif existing.target_commit != final_sha:
+                        raise RuntimeError(
+                            f"existing {tag_name} tag points to {existing.target_commit}, "
+                            f"not {final_sha}"
+                        )
+
+                    status = {
+                        "schema_version": "1.0",
+                        "status": "published",
+                        "repo_id": repo_id,
+                        "revision": final_sha,
+                        "tag": tag_name,
+                        "path_in_repo": release_path,
+                    }
+                    (public_root / "huggingface-publication.json").write_text(
+                        json.dumps(status, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                        encoding="utf-8",
+                    )
+                    PYPUBLISH
+                    publish_status=$?
+                    set -e
+                    if (( publish_status != 0 )); then
+                      PUBLISH_STATUS="$publish_status" python - "$status_file" \
+                        "$RUNNER_TEMP/hf-publication.stderr" <<'PYFAIL'
+                    import json
+                    import os
+                    from pathlib import Path
+                    import sys
+                    error = Path(sys.argv[2]).read_text(encoding="utf-8", errors="replace")
+                    Path(sys.argv[1]).write_text(
+                        json.dumps(
+                            {
+                                "schema_version": "1.0",
+                                "status": "failed",
+                                "exit_code": int(os.environ["PUBLISH_STATUS"]),
+                                "error": error[-4000:],
+                            },
+                            ensure_ascii=False,
+                            indent=2,
+                            sort_keys=True,
+                        ) + "\n",
+                        encoding="utf-8",
+                    )
+                    PYFAIL
+                    fi
+
+                - name: Upload compact Tesseract v1.1.0 results and publication status
+                  uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+                  with:
+                    name: hebocrbench-tesseract-fast-v1.1.0
+                    path: |
+                      __EXPR__ runner.temp }}/tesseract-public-results-v1.1.0
+                      __EXPR__ runner.temp }}/tesseract-environment.json
+                    if-no-files-found: error
+                    include-hidden-files: true
+                    compression-level: 9
+                    retention-days: 90
+
+          """
+          baseline = baseline.replace("__EXPR__", expr)
+
+          anchor = "      - name: Upload verified release candidate and certification evidence\n"
+          if anchor not in text:
+              raise SystemExit("release workflow upload anchor changed unexpectedly")
+          text = text.replace(anchor, baseline + "\n" + anchor, 1)
+          target.write_text(text, encoding="utf-8")
+          bootstrap.unlink()
+          PY
+
+          git diff --check
+          git status --short
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/modern-v1-release.yml
+          git rm --cached .github/workflows/bootstrap-tesseract-v1-1.yml 2>/dev/null || true
+          git add -u .github/workflows/bootstrap-tesseract-v1-1.yml
+          git commit -m "ci: run full Tesseract baseline under BiDi contract 1.1.0"
+          git push origin HEAD:agent/tesseract-v1-1-run
