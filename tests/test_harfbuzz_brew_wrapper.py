@@ -2,6 +2,7 @@ from pathlib import Path
 import stat
 
 from hebocrbench.harfbuzz_brew_wrapper import (
+    HISTORICAL_BOTTLE_NAME,
     WRAPPER_MARKER,
     brew_wrapper_script,
     install_brew_wrapper,
@@ -31,7 +32,7 @@ def test_install_brew_wrapper_backs_up_regular_executable(tmp_path: Path) -> Non
     assert str(prefix) in installed
 
 
-def test_wrapper_removes_newer_kegs_and_restores_after_install(
+def test_wrapper_pours_local_bottle_and_restores_after_dependency_install(
     tmp_path: Path,
 ) -> None:
     script = brew_wrapper_script(
@@ -40,9 +41,10 @@ def test_wrapper_removes_newer_kegs_and_restores_after_install(
         prefix=tmp_path / "homebrew",
     )
 
-    assert '! -name "$VERSION" -exec rm -rf {} +' in script
-    assert 'rm -rf "$CELLAR/harfbuzz/$VERSION"' in script
-    assert 'tar -xzf "$BOTTLE" -C "$CELLAR"' in script
-    assert '"$REAL_BREW" link --overwrite --force harfbuzz' in script
+    assert HISTORICAL_BOTTLE_NAME in script
+    assert 'cp "$BOTTLE" "$LOCAL_BOTTLE"' in script
+    assert "uninstall --ignore-dependencies --force harfbuzz" in script
+    assert 'install --force-bottle "$LOCAL_BOTTLE"' in script
+    assert 'test -f "$CELLAR/harfbuzz/$VERSION/INSTALL_RECEIPT.json"' in script
     assert 'if [[ "$#" -ge 1 && "$1" == "install" ]]' in script
     assert "restore_historical_harfbuzz" in script
