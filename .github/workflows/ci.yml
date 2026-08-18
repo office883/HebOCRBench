@@ -33,10 +33,12 @@ jobs:
           hook_files=(
             src/hebocrbench/harfbuzz_14_3_pin.py
             src/hebocrbench/harfbuzz_brew_wrapper.py
+            src/hebocrbench/tesseract_v11_gate.py
             src/hebocrbench/tesseract_v11_release_hook.py
             src/sitecustomize.py
             tests/test_harfbuzz_14_3_pin.py
             tests/test_harfbuzz_brew_wrapper.py
+            tests/test_tesseract_v11_gate.py
             tests/test_tesseract_v11_release_hook.py
           )
           python -m pip install --upgrade pip
@@ -46,10 +48,12 @@ jobs:
           python -m pytest -q \
             tests/test_harfbuzz_14_3_pin.py \
             tests/test_harfbuzz_brew_wrapper.py \
+            tests/test_tesseract_v11_gate.py \
             tests/test_tesseract_v11_release_hook.py
           python -m compileall -q \
             src/hebocrbench/harfbuzz_14_3_pin.py \
             src/hebocrbench/harfbuzz_brew_wrapper.py \
+            src/hebocrbench/tesseract_v11_gate.py \
             src/hebocrbench/tesseract_v11_release_hook.py \
             src/sitecustomize.py
 
