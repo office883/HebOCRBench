@@ -9,9 +9,45 @@ import shutil
 import stat
 
 
-WRAPPER_MARKER = "HEBOCRBENCH_HARFBUZZ_14_3_WRAPPER_V4"
+WRAPPER_MARKER = "HEBOCRBENCH_HARFBUZZ_14_3_WRAPPER_V5"
 HARFBUZZ_VERSION = "14.3.0"
 HISTORICAL_BOTTLE_NAME = "harfbuzz--14.3.0.arm64_tahoe.bottle.tar.gz"
+
+
+def homebrew_pour_script() -> str:
+    """Return the Homebrew-native Ruby installer for a local bottle path."""
+
+    return """# frozen_string_literal: true
+
+require "formulary"
+require "formula_installer"
+require "pathname"
+
+bottle_path = Pathname(ARGV.fetch(0)).expand_path
+raise "local bottle does not exist: #{bottle_path}" unless bottle_path.file?
+
+formula = Formulary.factory(bottle_path)
+installer = FormulaInstaller.new(
+  formula,
+  force_bottle: true,
+  ignore_deps: true,
+  link_keg: true,
+  installed_on_request: false,
+  show_header: true,
+  force: true,
+  overwrite: true,
+  verbose: true,
+)
+installer.prelude
+installer.install
+installer.finish
+
+keg = Keg.new(formula.prefix)
+tab = keg.tab
+raise "bottle receipt was not marked built_as_bottle" unless tab.built_as_bottle
+raise "bottle receipt was not marked poured_from_bottle" unless tab.poured_from_bottle
+puts formula.prefix
+"""
 
 
 def brew_wrapper_script(
@@ -20,13 +56,14 @@ def brew_wrapper_script(
     bottle: Path,
     prefix: Path,
 ) -> str:
-    """Return a narrow wrapper that pours the pinned local bottle when needed."""
+    """Return a narrow wrapper that pours the pinned bottle with Homebrew internals."""
 
     real = shlex.quote(str(real_brew))
     bottle_arg = shlex.quote(str(bottle))
     prefix_arg = shlex.quote(str(prefix))
     version = shlex.quote(HARFBUZZ_VERSION)
     bottle_name = shlex.quote(HISTORICAL_BOTTLE_NAME)
+    ruby_payload = homebrew_pour_script()
     return f"""#!/bin/bash
 # {WRAPPER_MARKER}
 set -euo pipefail
@@ -37,18 +74,18 @@ CELLAR="$PREFIX/Cellar"
 VERSION={version}
 BOTTLE_NAME={bottle_name}
 LOCAL_BOTTLE="$PREFIX/var/homebrew/cache/$BOTTLE_NAME"
+POUR_SCRIPT="$PREFIX/var/homebrew/cache/hebocrbench-pour-local-bottle.rb"
 
 restore_historical_harfbuzz() {{
-  echo "[hebocrbench] pouring HarfBuzz $VERSION from pinned local bottle" >&2
+  echo "[hebocrbench] pouring HarfBuzz $VERSION through FormulaInstaller" >&2
   set -x
   mkdir -p "$(dirname "$LOCAL_BOTTLE")"
   cp "$BOTTLE" "$LOCAL_BOTTLE"
+  cat > "$POUR_SCRIPT" <<'HEBOCRBENCH_RUBY'
+{ruby_payload}HEBOCRBENCH_RUBY
   "$REAL_BREW" uninstall --ignore-dependencies --force harfbuzz >/dev/null 2>&1 \
     || true
-  (
-    cd "$(dirname "$LOCAL_BOTTLE")"
-    "$REAL_BREW" install --force-bottle "./$BOTTLE_NAME"
-  )
+  HOMEBREW_DEVELOPER=1 "$REAL_BREW" ruby "$POUR_SCRIPT" "$LOCAL_BOTTLE"
   test -d "$CELLAR/harfbuzz/$VERSION"
   test -f "$CELLAR/harfbuzz/$VERSION/INSTALL_RECEIPT.json"
   test "$(basename "$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' \
