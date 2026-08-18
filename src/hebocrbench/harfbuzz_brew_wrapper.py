@@ -99,8 +99,6 @@ def install_brew_wrapper(wrapper_path: Path, *, bottle: Path) -> Path:
         brew_wrapper_script(real_brew=backup, bottle=bottle, prefix=prefix),
         encoding="utf-8",
     )
-    temporary.chmod(
-        temporary.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
-    )
+    temporary.chmod(temporary.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     os.replace(temporary, wrapper_path)
     return wrapper_path
