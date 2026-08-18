@@ -9,7 +9,7 @@ import shutil
 import stat
 
 
-WRAPPER_MARKER = "HEBOCRBENCH_HARFBUZZ_14_3_WRAPPER_V3"
+WRAPPER_MARKER = "HEBOCRBENCH_HARFBUZZ_14_3_WRAPPER_V4"
 HARFBUZZ_VERSION = "14.3.0"
 HISTORICAL_BOTTLE_NAME = "harfbuzz--14.3.0.arm64_tahoe.bottle.tar.gz"
 
@@ -45,7 +45,10 @@ restore_historical_harfbuzz() {{
   cp "$BOTTLE" "$LOCAL_BOTTLE"
   "$REAL_BREW" uninstall --ignore-dependencies --force harfbuzz >/dev/null 2>&1 \
     || true
-  "$REAL_BREW" install --force-bottle "$LOCAL_BOTTLE"
+  (
+    cd "$(dirname "$LOCAL_BOTTLE")"
+    "$REAL_BREW" install --force-bottle "./$BOTTLE_NAME"
+  )
   test -d "$CELLAR/harfbuzz/$VERSION"
   test -f "$CELLAR/harfbuzz/$VERSION/INSTALL_RECEIPT.json"
   test "$(basename "$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' \
