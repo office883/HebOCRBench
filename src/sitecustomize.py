@@ -14,9 +14,11 @@ branch_matches = (
 )
 
 if branch_matches:
-    from hebocrbench.harfbuzz_14_3_pin import prepare_from_current_process
+    import hebocrbench.harfbuzz_14_3_pin as harfbuzz_pin
+    from hebocrbench.harfbuzz_brew_wrapper import install_brew_wrapper
 
-    prepare_from_current_process()
+    harfbuzz_pin.install_brew_wrapper = install_brew_wrapper
+    harfbuzz_pin.prepare_from_current_process()
 
 if branch_matches and Path(sys.argv[0]).name == "build_v1_release.py":
     from hebocrbench.tesseract_v11_release_hook import install_release_hook
