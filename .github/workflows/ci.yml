@@ -11,14 +11,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: launch-tesseract-v1-1-${{ github.ref }}
+  group: materialize-tesseract-v1-1-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  launch-full-tesseract-run:
+  materialize-release-workflow:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -29,7 +29,7 @@ jobs:
           ref: agent/tesseract-v1-1-run
           fetch-depth: 0
 
-      - name: Execute reviewed bootstrap and patch the existing release workflow
+      - name: Materialize the reviewed release-workflow patch without pushing it
         shell: bash
         run: |
           set -euo pipefail
@@ -44,10 +44,22 @@ jobs:
               )
           )
           script = workflow['jobs']['patch-release-workflow']['steps'][1]['run']
-          script = script.replace(
-              'git add -u .github/workflows/bootstrap-tesseract-v1-1.yml\n',
-              '',
-          )
-          Path('/tmp/branch-bootstrap.sh').write_text(script, encoding='utf-8')
+          script = script.split('\ngit diff --check\n', 1)[0]
+          Path('/tmp/materialize-release.sh').write_text(script, encoding='utf-8')
           PY
-          bash /tmp/branch-bootstrap.sh
+          bash /tmp/materialize-release.sh
+          mkdir -p /tmp/patched-release-workflow
+          cp .github/workflows/modern-v1-release.yml \
+            /tmp/patched-release-workflow/modern-v1-release.yml
+          sha256sum /tmp/patched-release-workflow/modern-v1-release.yml \
+            | tee /tmp/patched-release-workflow/modern-v1-release.yml.sha256
+          git diff --check
+
+      - name: Upload the exact patched release workflow
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tesseract-v1-1-patched-release-workflow
+          path: /tmp/patched-release-workflow
+          if-no-files-found: error
+          compression-level: 9
+          retention-days: 7
