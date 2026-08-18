@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - agent/tesseract-v1-1-run
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -22,6 +26,7 @@ jobs:
       - name: Check out isolated run branch
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          ref: agent/tesseract-v1-1-run
           fetch-depth: 0
 
       - name: Execute reviewed bootstrap and patch the existing release workflow
